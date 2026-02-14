@@ -35,8 +35,10 @@ def ask_float(prompt, min_value=0.0):
 
 def ask_output_path():
     default_name = f"cattura_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    path = input(f"Percorso completo file PDF in uscita "
-                 f"(INVIO per usare '{default_name}' nella cartella corrente): ").strip()
+    path = input(
+        f"Percorso completo file PDF in uscita "
+        f"(INVIO per usare '{default_name}' nella cartella corrente): "
+    ).strip()
     if not path:
         path = os.path.join(os.getcwd(), default_name)
 
@@ -84,10 +86,16 @@ def choose_capture_region():
 #  Controlli qualità immagine
 # ==========================
 
-def get_bottom_right_quadrant(img):
-    """Ritorna il quadrante in basso a destra dell'immagine."""
+def get_corner_quadrants(img):
+    """
+    Ritorna due quadrati di verifica da 1/4 dell'immagine:
+    - quadrante in alto a sinistra
+    - quadrante in basso a destra
+    """
     w, h = img.size
-    return img.crop((w // 2, h // 2, w, h))
+    tl = img.crop((0, 0, w // 2, h // 2))          # top-left
+    br = img.crop((w // 2, h // 2, w, h))          # bottom-right
+    return tl, br
 
 
 def is_monochrome(img, tolerance=0):
@@ -128,27 +136,57 @@ def is_same_as_previous(img, prev_img):
 
 def validate_image(img, baseline_sharpness, sharpness_min_ratio=0.7):
     """
-    Valida l'immagine controllando il quadrante in basso a destra
-    (ultima parte a caricarsi):
-    - non monocolore
-    - nitidezza sufficiente rispetto al baseline
+    Valida l'immagine controllando DUE riquadri di verifica,
+    ciascuno grande w = W/2, h = H/2 (quindi 1/4 dell'area totale):
 
-    Ritorna (ok: bool, reason: str, new_sharpness: float)
+      - uno in ALTO SINISTRA
+      - uno in BASSO DESTRA
+
+    Entrambi devono:
+      - NON essere monocolore
+      - NON essere troppo sgranati rispetto al baseline
+
+    Ritorna (ok: bool, reason: str, new_sharpness: float, failure_type: str|None)
+    failure_type può essere:
+      - None
+      - "monochrome"
+      - "blurry"
     """
-    quadrant = get_bottom_right_quadrant(img)
+    tl, br = get_corner_quadrants(img)
 
-    if is_monochrome(quadrant):
-        return False, "Quadrante basso-destra monocolore (pagina non caricata?).", None
+    # Se uno dei due riquadri è monocolore, la pagina non è pronta
+    if is_monochrome(tl) or is_monochrome(br):
+        return (
+            False,
+            "Almeno uno dei riquadri (alto-sx / basso-dx) è monocolore (pagina non caricata?).",
+            None,
+            "monochrome",
+        )
 
-    sharp = image_sharpness(quadrant)
+    # Calcolo nitidezza su entrambi
+    sharp_tl = image_sharpness(tl)
+    sharp_br = image_sharpness(br)
+
+    # Usiamo la nitidezza peggiore dei due: deve essere sopra soglia in ENTRAMBI
+    combined_sharp = min(sharp_tl, sharp_br)
 
     if baseline_sharpness is None:
-        return True, "OK (prima pagina, definisco baseline nitidezza).", sharp
+        reason = (
+            "OK (prima pagina, definisco baseline nitidezza: "
+            f"tl={sharp_tl:.2f}, br={sharp_br:.2f}, min={combined_sharp:.2f})."
+        )
+        return True, reason, combined_sharp, None
 
-    if sharp < baseline_sharpness * sharpness_min_ratio:
-        return False, f"Quadrante basso-destra troppo sgranato (sharpness={sharp:.2f}, min={baseline_sharpness * sharpness_min_ratio:.2f})", sharp
+    soglia = baseline_sharpness * sharpness_min_ratio
+    if combined_sharp < soglia:
+        reason = (
+            "Riquadri troppo sgranati: "
+            f"sharp_tl={sharp_tl:.2f}, sharp_br={sharp_br:.2f}, "
+            f"min={combined_sharp:.2f}, soglia={soglia:.2f}"
+        )
+        return False, reason, combined_sharp, "blurry"
 
-    return True, "OK", sharp
+    return True, "OK (entrambi i riquadri sufficientemente nitidi).", combined_sharp, None
 
 
 # ==========================
@@ -161,6 +199,9 @@ def acquire_pages(num_pages, min_delay, max_attempts, capture_region, next_x, ne
     Acquisisce num_pages pagine. Ritorna (images, prev_page_img, baseline_sharp, skipped_pages).
     Le pagine duplicate vengono saltate senza contarle.
     Se la validazione fallisce dopo max_attempts, la pagina viene saltata e si prosegue.
+
+    Nota: se una pagina risulta "sgranata" ma è la PRIMA o l'ULTIMA
+    del blocco richiesto, viene comunque acquisita.
     """
     skipped_pages = []
     saved_count_start = len(images)
@@ -176,6 +217,11 @@ def acquire_pages(num_pages, min_delay, max_attempts, capture_region, next_x, ne
         attempt = 1
         img_ok = False
         current_img = None
+
+        # Prima pagina "globale" se non hai ancora salvato nulla
+        is_first_page_overall = (len(images) == 0 and page_idx == 1)
+        # Ultima pagina del blocco richiesto in questa chiamata
+        is_last_in_block = (page_idx == num_pages)
 
         while attempt <= max_attempts and not img_ok:
             if attempt == 1:
@@ -194,24 +240,33 @@ def acquire_pages(num_pages, min_delay, max_attempts, capture_region, next_x, ne
 
             # Controllo duplicato (immagine intera)
             if is_same_as_previous(current_img, prev_page_img):
-                print(f"  Risultato controllo: Immagine identica alla precedente, riprovo...")
+                print("  Risultato controllo: Immagine identica alla precedente, riprovo...")
                 attempt += 1
                 continue
 
-            # Validazione qualità sul quadrante basso-destra
-            ok, reason, sharp = validate_image(
+            # Validazione qualità sui due quadranti
+            ok, reason, sharp, fail_type = validate_image(
                 current_img,
                 baseline_sharpness=baseline_sharp
             )
 
             print(f"  Risultato controllo: {reason}")
+
             if ok:
                 img_ok = True
                 if baseline_sharp is None and sharp is not None:
                     baseline_sharp = sharp
                     print(f"  Baseline nitidezza impostata a: {baseline_sharp:.2f}")
             else:
-                attempt += 1
+                # Se è "solo" sgranata ma è prima o ultima pagina, accetto comunque
+                if fail_type == "blurry" and (is_first_page_overall or is_last_in_block):
+                    print("  Immagine sgranata ma accetto comunque perché è la prima/ultima pagina.")
+                    img_ok = True
+                    if baseline_sharp is None and sharp is not None:
+                        baseline_sharp = sharp
+                        print(f"  Baseline nitidezza impostata a: {baseline_sharp:.2f}")
+                else:
+                    attempt += 1
 
         if not img_ok:
             print(f"  [ATTENZIONE] Pagina {page_idx} non validata dopo {max_attempts} tentativi, la salto.")
