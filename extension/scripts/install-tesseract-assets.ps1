@@ -8,17 +8,30 @@ $NodeModules = Join-Path $TempDir "node_modules"
 Write-Host "Ebook2PDF - installazione asset OCR Tesseract.js"
 Write-Host "Cartella extension: $ExtensionDir"
 
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    throw "npm non trovato. Installa Node.js/npm e riapri PowerShell prima di rieseguire lo script."
+}
+
 if (Test-Path $TempDir) {
     Remove-Item -Recurse -Force $TempDir
 }
 
 New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
 
-npm install --prefix $TempDir --ignore-scripts --no-save `
-    tesseract.js@7.0.0 `
-    tesseract.js-core@7.0.0 `
-    @tesseract.js-data/ita@1.0.0 `
-    @tesseract.js-data/eng@1.0.0
+# I pacchetti scoped che iniziano con @ devono essere passati come stringhe:
+# senza virgolette PowerShell interpreta @ come operatore di splatting.
+$Packages = @(
+    "tesseract.js@7.0.0",
+    "tesseract.js-core@7.0.0",
+    "@tesseract.js-data/ita@1.0.0",
+    "@tesseract.js-data/eng@1.0.0"
+)
+
+Write-Host "Scarico i pacchetti npm necessari..."
+& npm install --prefix $TempDir --ignore-scripts --no-save @Packages
+if ($LASTEXITCODE -ne 0) {
+    throw "npm install terminato con codice $LASTEXITCODE."
+}
 
 $TesseractDir = Join-Path $ExtensionDir "lib\tesseract"
 $CoreDir = Join-Path $ExtensionDir "lib\tesseract-core"
