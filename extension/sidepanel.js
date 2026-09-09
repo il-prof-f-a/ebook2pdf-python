@@ -5,6 +5,17 @@ let stopRequested = false;
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+const SETTINGS_KEY = "ebook2pdfSettings";
+const DEFAULT_SETTINGS = Object.freeze({
+  delay: 1.5,
+  retryDelay: 2.0,
+  attempts: 5,
+  sharpness: 7.5,
+  checkDuplicates: true,
+  checkQuality: true,
+  ocrLanguage: "ita+eng"
+});
+
 function log(message) {
   const time = new Date().toLocaleTimeString();
   $("log").textContent += `[${time}] ${message}\n`;
@@ -13,6 +24,63 @@ function log(message) {
 
 function setStep(text) {
   $("stepText").textContent = text;
+}
+
+function languageLabel(value) {
+  if (value === "ita") return "Italiano";
+  if (value === "eng") return "Inglese";
+  return "Italiano + Inglese";
+}
+
+function applySettings(settings) {
+  const merged = { ...DEFAULT_SETTINGS, ...(settings || {}) };
+  $("delay").value = merged.delay;
+  $("retryDelay").value = merged.retryDelay;
+  $("attempts").value = merged.attempts;
+  $("sharpness").value = merged.sharpness;
+  $("checkDuplicates").checked = !!merged.checkDuplicates;
+  $("checkQuality").checked = !!merged.checkQuality;
+  $("ocrLanguage").value = merged.ocrLanguage || "ita+eng";
+  $("ocrLanguageSummary").textContent = `Lingua OCR: ${languageLabel($("ocrLanguage").value)}`;
+}
+
+function settingsFromForm() {
+  return {
+    delay: Math.max(0.2, Number($("delay").value) || DEFAULT_SETTINGS.delay),
+    retryDelay: Math.max(0.5, Number($("retryDelay").value) || DEFAULT_SETTINGS.retryDelay),
+    attempts: Math.min(20, Math.max(1, Number($("attempts").value) || DEFAULT_SETTINGS.attempts)),
+    sharpness: Math.max(0, Number($("sharpness").value) || DEFAULT_SETTINGS.sharpness),
+    checkDuplicates: $("checkDuplicates").checked,
+    checkQuality: $("checkQuality").checked,
+    ocrLanguage: $("ocrLanguage").value || DEFAULT_SETTINGS.ocrLanguage
+  };
+}
+
+async function loadSettings() {
+  try {
+    const stored = await chrome.storage.local.get(SETTINGS_KEY);
+    applySettings(stored?.[SETTINGS_KEY]);
+  } catch (error) {
+    applySettings(DEFAULT_SETTINGS);
+    console.warn("Ebook2PDF: impossibile leggere le impostazioni", error);
+  }
+}
+
+async function saveSettings() {
+  const settings = settingsFromForm();
+  await chrome.storage.local.set({ [SETTINGS_KEY]: settings });
+  applySettings(settings);
+  $("settingsStatus").textContent = "Impostazioni salvate.";
+  return settings;
+}
+
+function showSettings(show) {
+  $("mainView").classList.toggle("hidden", show);
+  $("settingsView").classList.toggle("hidden", !show);
+  $("settingsButton").classList.toggle("hidden", show);
+  if (!show) {
+    $("ocrLanguageSummary").textContent = `Lingua OCR: ${languageLabel($("ocrLanguage").value)}`;
+  }
 }
 
 async function activeTab() {
@@ -96,7 +164,7 @@ function quadrantStats(imageData, x0, y0, width, height) {
   };
 }
 
-function validateImage(imageData, baselineSharpness, ratio) {
+function validateImage(imageData, sharpnessThreshold) {
   const halfW = Math.max(1, Math.floor(imageData.width / 2));
   const halfH = Math.max(1, Math.floor(imageData.height / 2));
   const tl = quadrantStats(imageData, 0, 0, halfW, halfH);
@@ -107,11 +175,8 @@ function validateImage(imageData, baselineSharpness, ratio) {
   }
 
   const sharpness = Math.min(tl.sharpness, br.sharpness);
-  if (baselineSharpness == null) {
-    return { ok: true, sharpness, reason: `baseline nitidezza ${sharpness.toFixed(2)}` };
-  }
+  const threshold = Math.max(0, Number(sharpnessThreshold) || 0);
 
-  const threshold = baselineSharpness * ratio;
   if (sharpness < threshold) {
     return {
       ok: false,
@@ -121,7 +186,11 @@ function validateImage(imageData, baselineSharpness, ratio) {
     };
   }
 
-  return { ok: true, sharpness, reason: `nitidezza ${sharpness.toFixed(2)}` };
+  return {
+    ok: true,
+    sharpness,
+    reason: `nitidezza ${sharpness.toFixed(2)} (soglia ${threshold.toFixed(2)})`
+  };
 }
 
 function imageDifference(a, b) {
@@ -206,9 +275,6 @@ function buildOcrCommands(page, widthPt, heightPt) {
     const fontSize = Math.min(72, Math.max(3, boxHeight * 0.90));
     const x = Math.max(0, bbox.x0 * scaleX);
     const y = Math.max(0, heightPt - (bbox.y1 * scaleY) + (fontSize * 0.08));
-
-    // Il testo viene reso invisibile (3 Tr), ma resta selezionabile/ricercabile.
-    // Tz adatta grossolanamente la larghezza del testo alla bounding box OCR.
     const estimatedWidth = Math.max(1, text.length * fontSize * 0.50);
     const horizontalScale = Math.min(300, Math.max(20, (boxWidth / estimatedWidth) * 100));
 
@@ -339,8 +405,28 @@ async function runOcr(pages, language) {
   return recognizedPages > 0;
 }
 
-$("enableOcr").addEventListener("change", event => {
-  $("ocrOptions").classList.toggle("hidden", !event.target.checked);
+$("settingsButton").addEventListener("click", () => {
+  $("settingsStatus").textContent = "";
+  showSettings(true);
+});
+
+$("closeSettings").addEventListener("click", async () => {
+  await saveSettings();
+  showSettings(false);
+});
+
+$("saveSettings").addEventListener("click", async () => {
+  await saveSettings();
+});
+
+$("resetSettings").addEventListener("click", async () => {
+  applySettings(DEFAULT_SETTINGS);
+  await chrome.storage.local.set({ [SETTINGS_KEY]: { ...DEFAULT_SETTINGS } });
+  $("settingsStatus").textContent = "Impostazioni predefinite ripristinate.";
+});
+
+$("ocrLanguage").addEventListener("change", () => {
+  $("ocrLanguageSummary").textContent = `Lingua OCR: ${languageLabel($("ocrLanguage").value)}`;
 });
 
 $("selectRegion").addEventListener("click", async () => {
@@ -379,13 +465,15 @@ $("start").addEventListener("click", async () => {
   }
 
   const totalPages = Math.max(1, Number($("pages").value) || 1);
-  const delayMs = Math.max(200, (Number($("delay").value) || 1.5) * 1000);
-  const maxAttempts = Math.max(1, Number($("attempts").value) || 5);
-  const sharpnessRatio = Math.min(1, Math.max(0.1, Number($("sharpness").value) || 0.7));
-  const checkDuplicates = $("checkDuplicates").checked;
-  const checkQuality = $("checkQuality").checked;
+  const settings = settingsFromForm();
+  const delayMs = settings.delay * 1000;
+  const retryDelayMs = settings.retryDelay * 1000;
+  const maxAttempts = settings.attempts;
+  const sharpnessThreshold = settings.sharpness;
+  const checkDuplicates = settings.checkDuplicates;
+  const checkQuality = settings.checkQuality;
   const enableOcr = $("enableOcr").checked;
-  const ocrLanguage = $("ocrLanguage").value || "ita+eng";
+  const ocrLanguage = settings.ocrLanguage;
 
   stopRequested = false;
   $("start").disabled = true;
@@ -395,11 +483,11 @@ $("start").addEventListener("click", async () => {
   $("log").textContent = "";
   $("ocrProgressBox").classList.add("hidden");
   setStep(enableOcr ? "1/3 — Acquisizione" : "1/2 — Acquisizione");
+  log(`Parametri: soglia nitidezza ${sharpnessThreshold.toFixed(2)}, retry ${settings.retryDelay.toFixed(1)}s, ${maxAttempts} tentativi.`);
 
   const pages = [];
   const skipped = [];
   let previousImageData = null;
-  let baselineSharpness = null;
   let searchablePdf = false;
 
   try {
@@ -408,7 +496,9 @@ $("start").addEventListener("click", async () => {
       let lastReason = "";
 
       for (let attempt = 1; attempt <= maxAttempts && !stopRequested; attempt++) {
-        if (pageIndex > 0 || attempt > 1) await sleep(attempt === 1 ? delayMs : 1000);
+        if (pageIndex > 0 || attempt > 1) {
+          await sleep(attempt === 1 ? delayMs : retryDelayMs);
+        }
 
         const capture = await cropCapture(await captureVisible(), region);
 
@@ -422,7 +512,7 @@ $("start").addEventListener("click", async () => {
         }
 
         if (checkQuality) {
-          const validation = validateImage(capture.imageData, baselineSharpness, sharpnessRatio);
+          const validation = validateImage(capture.imageData, sharpnessThreshold);
           lastReason = validation.reason;
           if (!validation.ok) {
             const edgePage = pageIndex === 0 || pageIndex === totalPages - 1;
@@ -430,10 +520,7 @@ $("start").addEventListener("click", async () => {
               log(`Pagina ${pageIndex + 1}, tentativo ${attempt}: ${validation.reason}`);
               continue;
             }
-            log(`Pagina ${pageIndex + 1}: accettata pur sgranata perché iniziale/finale.`);
-          }
-          if (baselineSharpness == null && validation.sharpness != null) {
-            baselineSharpness = validation.sharpness;
+            log(`Pagina ${pageIndex + 1}: accettata pur sotto soglia perché iniziale/finale.`);
           }
         }
 
@@ -494,3 +581,5 @@ $("start").addEventListener("click", async () => {
     $("stop").disabled = true;
   }
 });
+
+loadSettings();
