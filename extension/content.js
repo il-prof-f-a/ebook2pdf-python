@@ -1,5 +1,7 @@
 (() => {
   let overlay = null;
+  let captureRegion = null;
+  let lastRelevantMutationAt = performance.now();
 
   function cleanup() {
     if (overlay) {
@@ -53,6 +55,65 @@
     return parts.join(" > ");
   }
 
+  function normalizeRegion(region) {
+    if (!region) return null;
+    const x = Number(region.x);
+    const y = Number(region.y);
+    const width = Number(region.width);
+    const height = Number(region.height);
+    if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
+    return { x, y, width, height };
+  }
+
+  function intersectsRegion(rect, region = captureRegion) {
+    if (!region) return true;
+    if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+    return !(
+      rect.right <= region.x ||
+      rect.left >= region.x + region.width ||
+      rect.bottom <= region.y ||
+      rect.top >= region.y + region.height
+    );
+  }
+
+  function isVisibleElement(el, region = captureRegion) {
+    if (!(el instanceof Element)) return false;
+    const style = getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+    return intersectsRegion(el.getBoundingClientRect(), region);
+  }
+
+  function markMutationIfRelevant(target) {
+    if (!(target instanceof Element)) {
+      lastRelevantMutationAt = performance.now();
+      return;
+    }
+    if (overlay && (target === overlay || overlay.contains(target))) return;
+    if (!captureRegion || intersectsRegion(target.getBoundingClientRect(), captureRegion)) {
+      lastRelevantMutationAt = performance.now();
+    }
+  }
+
+  const observer = new MutationObserver(records => {
+    for (const record of records) {
+      markMutationIfRelevant(record.target);
+      if (performance.now() === lastRelevantMutationAt) break;
+    }
+  });
+
+  function startMutationObserver() {
+    const target = document.documentElement;
+    if (!target) return;
+    observer.observe(target, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      characterData: true
+    });
+  }
+
+  startMutationObserver();
+
   function selectRegion() {
     return new Promise(resolve => {
       const layer = makeOverlay();
@@ -91,7 +152,9 @@
           dpr: window.devicePixelRatio || 1
         };
         cleanup();
-        resolve(rect.width >= 10 && rect.height >= 10 ? rect : null);
+        captureRegion = rect.width >= 10 && rect.height >= 10 ? normalizeRegion(rect) : null;
+        lastRelevantMutationAt = performance.now();
+        resolve(captureRegion ? { ...rect } : null);
       };
 
       layer.addEventListener("mousedown", e => {
@@ -131,12 +194,73 @@
         const y = e.clientY;
         cleanup();
         const el = document.elementFromPoint(x, y);
-        resolve(el ? { selector: selectorFor(el), text: (el.innerText || el.getAttribute("aria-label") || "").trim().slice(0, 80) } : null);
+        resolve(el ? {
+          selector: selectorFor(el),
+          text: (el.innerText || el.getAttribute("aria-label") || "").trim().slice(0, 80)
+        } : null);
       }, { once: true });
     });
   }
 
+  function visibleBusyElements(region) {
+    const selectors = [
+      '[aria-busy="true"]',
+      '[data-loading="true"]',
+      '[class*="spinner" i]',
+      '[class*="loader" i]',
+      '[class*="loading" i]',
+      '[id*="spinner" i]',
+      '[id*="loader" i]',
+      '[id*="loading" i]'
+    ];
+    const found = new Set();
+    for (const selector of selectors) {
+      try {
+        for (const el of document.querySelectorAll(selector)) {
+          if (isVisibleElement(el, region)) found.add(el);
+        }
+      } catch (_) {}
+    }
+    return found.size;
+  }
+
+  function incompleteImages(region) {
+    let count = 0;
+    for (const img of document.images || []) {
+      if (!isVisibleElement(img, region)) continue;
+      if (!img.complete || img.naturalWidth === 0) count++;
+    }
+    return count;
+  }
+
+  function getRenderState(region, requestedIdleMs = 500) {
+    const normalizedRegion = normalizeRegion(region) || captureRegion;
+    if (normalizedRegion) captureRegion = normalizedRegion;
+
+    const busyCount = visibleBusyElements(normalizedRegion);
+    const incompleteImageCount = incompleteImages(normalizedRegion);
+    const mutationIdleMs = Math.max(0, performance.now() - lastRelevantMutationAt);
+    const documentReady = document.readyState === "complete";
+    const fontsReady = !document.fonts || document.fonts.status === "loaded";
+    const domIdle = mutationIdleMs >= Math.max(0, Number(requestedIdleMs) || 0);
+
+    return {
+      ok: true,
+      ready: documentReady && fontsReady && busyCount === 0 && incompleteImageCount === 0 && domIdle,
+      documentReady,
+      fontsReady,
+      busyCount,
+      incompleteImageCount,
+      mutationIdleMs: Math.round(mutationIdleMs),
+      domIdle
+    };
+  }
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === "PING") {
+      sendResponse({ ok: true });
+      return;
+    }
     if (message?.type === "SELECT_REGION") {
       selectRegion().then(region => sendResponse({ ok: !!region, region }));
       return true;
@@ -149,11 +273,16 @@
       try {
         const el = document.querySelector(message.selector);
         if (!el) throw new Error("Elemento 'pagina successiva' non trovato");
+        lastRelevantMutationAt = performance.now();
         el.click();
         sendResponse({ ok: true });
       } catch (error) {
         sendResponse({ ok: false, error: String(error) });
       }
+      return;
+    }
+    if (message?.type === "GET_RENDER_STATE") {
+      sendResponse(getRenderState(message.region, message.mutationIdleMs));
       return;
     }
     if (message?.type === "GET_VIEWPORT") {
