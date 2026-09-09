@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Ebook2PDF",
-  "version": "0.1.0",
-  "description": "Cattura pagine visibili di documenti online autorizzati e le raccoglie in un PDF.",
+  "version": "0.2.0",
+  "description": "Cattura pagine visibili di documenti online autorizzati e le raccoglie in un PDF, con OCR locale opzionale.",
   "permissions": [
     "activeTab",
     "tabs",
@@ -21,6 +21,9 @@
   },
   "action": {
     "default_title": "Apri Ebook2PDF"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
   },
   "content_scripts": [
     {
