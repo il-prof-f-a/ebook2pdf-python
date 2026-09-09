@@ -5,10 +5,19 @@ body {
   color: #1f2328;
 }
 main { padding: 16px; }
-h1 { margin: 0 0 6px; font-size: 22px; }
-.muted { color: #656d76; margin-top: 0; }
+.topbar,
+.settings-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+h1 { margin: 0; font-size: 22px; }
+h2 { margin: 0; font-size: 19px; }
+h3 { margin: 0 0 8px; font-size: 15px; }
+.muted { color: #656d76; margin-top: 6px; }
 .compact { margin: 6px 0 0; font-size: 12px; }
-.hidden { display: none; }
+.hidden { display: none !important; }
 label { display: block; margin: 12px 0; font-weight: 600; }
 input[type="number"],
 select {
@@ -30,17 +39,40 @@ button {
   cursor: pointer;
 }
 button.primary { background: #1f6feb; color: white; border-color: #1f6feb; }
+button.secondary { background: #f6f8fa; }
+button.small { padding: 6px 9px; }
+button.iconbutton {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 19px;
+}
+button.iconbutton:hover { background: #eaeef2; }
 button:disabled { opacity: .55; cursor: default; }
 .statusbox,
-.ocrbox,
-.ocrprogress {
+.ocrprogress,
+.settingsbox {
   background: white;
   border: 1px solid #d8dee4;
   border-radius: 7px;
   padding: 10px;
   margin: 12px 0;
 }
-.ocrbox label { margin: 0; }
+.settingsbox h3 { border-bottom: 1px solid #eaeef2; padding-bottom: 7px; }
+.help {
+  margin: -7px 0 10px;
+  font-size: 12px;
+  color: #656d76;
+}
+.help.warning {
+  margin-top: -5px;
+  padding: 8px;
+  border-radius: 6px;
+  background: #fff8c5;
+  color: #4d3b00;
+}
 .step {
   margin-top: 10px;
   font-weight: 700;
@@ -48,6 +80,7 @@ button:disabled { opacity: .55; cursor: default; }
 progress { width: 100%; margin-top: 10px; }
 #progressText,
 #ocrProgressText { margin-top: 5px; }
+#settingsStatus { min-height: 18px; }
 #log {
   min-height: 120px;
   max-height: 260px;
