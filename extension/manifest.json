@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Ebook2PDF",
+  "version": "0.1.0",
+  "description": "Cattura pagine visibili di documenti online autorizzati e le raccoglie in un PDF.",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "sidePanel",
+    "downloads",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Apri Ebook2PDF"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
