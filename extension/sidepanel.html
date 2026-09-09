@@ -39,16 +39,37 @@
 
     <label class="check"><input id="checkDuplicates" type="checkbox" checked> controlla pagine duplicate</label>
     <label class="check"><input id="checkQuality" type="checkbox" checked> controlla caricamento/nitidezza</label>
+    <label class="check"><input id="enableOcr" type="checkbox"> crea PDF ricercabile con OCR locale</label>
+
+    <section id="ocrOptions" class="ocrbox hidden">
+      <label>Lingua OCR
+        <select id="ocrLanguage">
+          <option value="ita+eng" selected>Italiano + Inglese</option>
+          <option value="ita">Italiano</option>
+          <option value="eng">Inglese</option>
+        </select>
+      </label>
+      <p class="muted compact">Tesseract.js viene eseguito localmente. Nessuna pagina viene inviata a servizi esterni.</p>
+    </section>
 
     <div class="buttons">
       <button id="start" class="primary">▶ Avvia acquisizione</button>
       <button id="stop" disabled>■ Ferma</button>
     </div>
 
+    <div id="stepText" class="step">Pronto.</div>
     <progress id="progress" value="0" max="1"></progress>
     <div id="progressText">Pronto.</div>
+
+    <section id="ocrProgressBox" class="ocrprogress hidden">
+      <div><strong>OCR</strong></div>
+      <progress id="ocrProgress" value="0" max="1"></progress>
+      <div id="ocrProgressText">In attesa.</div>
+    </section>
+
     <pre id="log"></pre>
   </main>
+  <script src="ocr.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>
