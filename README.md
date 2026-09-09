@@ -253,15 +253,11 @@ Dettagli: [`extension/OCR_TUNING.md`](extension/OCR_TUNING.md).
 
 ## 🎥 Video tutorial dell'estensione
 
-> **Spazio riservato al video YouTube in cui verranno mostrati installazione e utilizzo di Ebook2PDF.**
->
-> Inserire qui il link o l'ID del video quando sarà pubblicato.
+Nel video seguente mostro come installare e utilizzare l'estensione Ebook2PDF:
 
-<!--
-Sostituire VIDEO_ID e rimuovere il commento quando il video sarà disponibile:
+[![Video tutorial Ebook2PDF](https://img.youtube.com/vi/4KZX2lSnJa0/maxresdefault.jpg)](https://www.youtube.com/watch?v=4KZX2lSnJa0)
 
-[![Video tutorial Ebook2PDF](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=VIDEO_ID)
--->
+▶️ [Guarda il tutorial su YouTube](https://www.youtube.com/watch?v=4KZX2lSnJa0)
 
 ---
 
