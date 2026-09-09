@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Autore:</strong> Prof. Adriani · <a href="https://github.com/il-prof-f-a">@il-prof-f-a</a><br>
+  <strong>Autore:</strong> proffa<br>
   <strong>Repository:</strong> <a href="https://github.com/il-prof-f-a/ebook2pdf-python">github.com/il-prof-f-a/ebook2pdf-python</a>
 </p>
 
@@ -157,12 +157,15 @@ Documentazione dettagliata: [`DESKTOP.md`](DESKTOP.md).
 
 # Estensione browser
 
-L'estensione Manifest V3 è contenuta in `extension/` e viene sviluppata sul branch `browser-extension`.
+L'estensione Manifest V3 è contenuta in `extension/` ed è già integrata nel branch `main` del repository.
 
 ## Installazione
 
+Clona o scarica normalmente il repository; non è necessario passare a un branch dedicato:
+
 ```bash
-git checkout browser-extension
+git clone https://github.com/il-prof-f-a/ebook2pdf-python.git
+cd ebook2pdf-python
 ```
 
 Apri quindi:
@@ -178,7 +181,7 @@ Poi:
 3. seleziona la cartella `extension/`;
 4. opzionalmente fissa Ebook2PDF nella barra degli strumenti.
 
-Gli asset Tesseract.js, WASM, `ita`/`eng` e `pdf-lib` correnti sono inclusi nel ramo dell'estensione. Per rigenerarli:
+Gli asset Tesseract.js, WASM, `ita`/`eng` e `pdf-lib` correnti sono inclusi nel repository. Per rigenerarli:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\extension\scripts\install-tesseract-assets.ps1
