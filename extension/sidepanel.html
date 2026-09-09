@@ -92,6 +92,20 @@
             <option value="eng">Inglese</option>
           </select>
         </label>
+
+        <label>Segmentazione pagina Tesseract (PSM)
+          <select id="ocrPsm">
+            <option value="3" selected>Automatica — PSM 3 (consigliata)</option>
+            <option value="4">Colonna singola — PSM 4</option>
+            <option value="6">Blocco uniforme — PSM 6</option>
+            <option value="11">Testo sparso — PSM 11</option>
+          </select>
+        </label>
+        <p class="help">PSM 3 è adatto alle normali pagine di libro con più aree. PSM 4 può aiutare pagine prevalentemente a colonna; PSM 6 è utile quando l'area selezionata contiene un singolo blocco o riquadro; PSM 11 cerca testo sparso senza imporre fortemente un ordine di lettura.</p>
+
+        <label class="check"><input id="preserveInterwordSpaces" type="checkbox" checked> preserva gli spazi tra le parole riconosciuti da Tesseract</label>
+        <p class="help">Mantiene la spaziatura inter-parola nell'output OCR. Il PDF viene inoltre costruito per righe complete, anziché posizionando ogni parola come oggetto separato.</p>
+
         <p class="help">Tesseract.js viene eseguito localmente. Nessuna pagina viene inviata a servizi esterni.</p>
       </div>
 
@@ -105,5 +119,6 @@
   <script src="ocr.js"></script>
   <script src="sidepanel.js"></script>
   <script src="quality-ratio.js"></script>
+  <script src="ocr-layout-pdf.js"></script>
 </body>
 </html>
