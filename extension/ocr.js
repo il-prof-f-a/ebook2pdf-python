@@ -71,6 +71,14 @@
     return output;
   }
 
+  function normalizeLanguages(language) {
+    if (Array.isArray(language)) return language;
+    return String(language || "ita+eng")
+      .split("+")
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+
   async function recognizePages(pages, options = {}) {
     const {
       language = "ita+eng",
@@ -79,11 +87,12 @@
     } = options;
 
     const Tesseract = await loadTesseractApi();
+    const languages = normalizeLanguages(language);
     let currentPage = 0;
     let worker = null;
 
     try {
-      worker = await Tesseract.createWorker(language, 1, {
+      worker = await Tesseract.createWorker(languages, 1, {
         workerPath: extensionUrl("lib/tesseract/worker.min.js"),
         corePath: extensionUrl("lib/tesseract-core/"),
         langPath: extensionUrl("tessdata/"),
