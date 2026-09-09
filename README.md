@@ -1,161 +1,293 @@
-## 🧩 Dipendenze
+<p align="center">
+  <img src="extension/icons/icon128.png" alt="Ebook2PDF" width="128">
+</p>
 
-Installa le librerie necessarie con:
+<h1 align="center">Ebook2PDF</h1>
+
+<p align="center">
+  Acquisisce le pagine visibili di ebook e documenti web autorizzati e le raccoglie in un PDF locale.<br>
+  Disponibile come <strong>script Python</strong> oppure come <strong>estensione per browser Chromium</strong> con OCR locale opzionale.
+</p>
+
+<p align="center">
+  <strong>Autore:</strong> Prof. Adriani · <a href="https://github.com/il-prof-f-a">@il-prof-f-a</a><br>
+  <strong>Repository:</strong> <a href="https://github.com/il-prof-f-a/ebook2pdf-python">github.com/il-prof-f-a/ebook2pdf-python</a>
+</p>
+
+> [!IMPORTANT]
+> Ebook2PDF è pensato per documenti di cui si possiede il diritto o l'autorizzazione alla copia. Non implementa rimozione DRM, decifratura, recupero di contenuti nascosti o accesso a risorse non visibili all'utente.
+
+---
+
+## Due modalità di utilizzo
+
+| | Script Python | Estensione browser |
+|---|---|---|
+| Ambiente | Windows/desktop | Chrome, Edge, Brave e browser Chromium compatibili |
+| Selezione area | coordinate schermo | selezione grafica nel browser |
+| Pagina successiva | coordinate del mouse | elemento DOM selezionato dall'utente |
+| Numero pagine | numero definito | numero definito oppure **Tutte** |
+| Fine documento automatica | no | sì, quando il comando avanti non è più disponibile |
+| Controllo rendering | retry + controlli immagine | stabilità visiva + segnali DOM |
+| OCR | esterno/manuale | **Tesseract.js locale opzionale** |
+| PDF ricercabile | con post-elaborazione | integrato |
+| Configurazione | console | pannello laterale + impostazioni persistenti |
+
+Per un utilizzo normale nel browser è consigliata l'**estensione**. Lo script Python resta utile come soluzione semplice, indipendente dal DOM del portale e facilmente modificabile.
+
+---
+
+# Estensione browser
+
+## Funzioni principali
+
+L'estensione Ebook2PDF utilizza Manifest V3 e lavora interamente nel browser. Permette di:
+
+- selezionare graficamente l'area della pagina da acquisire;
+- scegliere direttamente il controllo usato dal viewer per passare alla pagina successiva;
+- gestire pulsanti, link, componenti custom e controlli basati su SVG;
+- acquisire un numero prestabilito di pagine oppure scegliere **Tutte**;
+- attendere il completamento del rendering prima della cattura;
+- verificare che la nuova pagina sia realmente diversa dalla precedente;
+- usare segnali DOM come `document.readyState`, font caricati, immagini complete, `aria-busy`, loader e quiete delle mutazioni;
+- usare anche la stabilità visiva tra screenshot consecutivi;
+- mantenere la nitidezza come diagnostica senza scartare automaticamente una pagina già stabilizzata;
+- creare PDF multipagina completamente in locale;
+- aggiungere OCR locale con Tesseract.js;
+- produrre PDF ricercabili e selezionabili usando il renderer PDF nativo di Tesseract;
+- scegliere lingua OCR, PSM e ingrandimento dell'immagine usata dal riconoscimento;
+- conservare le impostazioni in `chrome.storage.local`.
+
+## Installazione dell'estensione
+
+### 1. Scarica il repository
+
+Con Git:
+
+```bash
+git clone https://github.com/il-prof-f-a/ebook2pdf-python.git
+cd ebook2pdf-python
+```
+
+Se stai provando l'estensione prima che il branch dedicato venga integrato nel ramo principale:
+
+```bash
+git checkout browser-extension
+```
+
+In alternativa puoi scaricare il repository come ZIP da GitHub ed estrarlo in una cartella locale.
+
+### 2. Carica l'estensione nel browser
+
+Apri la pagina delle estensioni:
+
+- Chrome: `chrome://extensions/`
+- Edge: `edge://extensions/`
+- Brave: `brave://extensions/`
+
+Poi:
+
+1. attiva **Modalità sviluppatore**;
+2. scegli **Carica estensione non pacchettizzata** / **Load unpacked**;
+3. seleziona la cartella `extension/` del repository;
+4. opzionalmente fissa Ebook2PDF nella barra degli strumenti del browser.
+
+L'icona blu di Ebook2PDF comparirà tra le estensioni installate.
+
+### 3. Asset OCR
+
+Gli asset runtime correnti di Tesseract.js, Tesseract Core, i modelli `ita`/`eng` e `pdf-lib` sono inclusi nella cartella `extension/`.
+
+Se devi rigenerarli o aggiornarli, dalla root del repository puoi usare gli script predisposti. Su Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\extension\scripts\install-tesseract-assets.ps1
+```
+
+Su Linux, macOS o Git Bash:
+
+```bash
+bash ./extension/scripts/install-tesseract-assets.sh
+```
+
+Gli script richiedono Node.js/npm. Dopo aver aggiornato gli asset premi **Ricarica** nella pagina delle estensioni.
+
+## Come usare l'estensione
+
+1. Apri l'ebook o il documento web e posizionati sulla prima pagina da acquisire.
+2. Apri Ebook2PDF dalla sua icona: compare il pannello laterale.
+3. Scegli quante pagine acquisire oppure abilita **Tutte**.
+4. Premi **Seleziona area pagina** e trascina il rettangolo sull'area del documento da includere.
+5. Premi **Seleziona pulsante avanti** e clicca il controllo che porta alla pagina successiva.
+6. Se vuoi un PDF ricercabile, abilita **OCR locale**.
+7. Apri ⚙️ **Impostazioni** se vuoi modificare rendering, retry, segnali DOM, PSM, lingua o upscale OCR.
+8. Premi **Avvia acquisizione**.
+
+Con la modalità **Tutte**, Ebook2PDF continua finché il comando "pagina successiva" non è più disponibile. In quel momento chiude l'acquisizione e passa automaticamente all'OCR e alla creazione del PDF.
+
+Se il comando avanti rimane presente ma la pagina non cambia dopo tutti i tentativi configurati, l'acquisizione viene interrotta per evitare duplicati o sequenze sfasate.
+
+## Rilevamento del completamento della pagina
+
+La nitidezza non è più il criterio principale per decidere se una pagina è pronta. Dopo ogni cambio pagina l'estensione combina due gruppi di segnali:
+
+**Stabilità visiva**
+
+- verifica che l'area sia cambiata rispetto alla pagina precedente;
+- confronta screenshot successivi della stessa area;
+- considera stabile la pagina dopo il numero configurato di conferme consecutive.
+
+**Segnali DOM**
+
+- `document.readyState`;
+- stato dei font;
+- immagini visibili ancora incomplete;
+- elementi visibili con `aria-busy="true"`;
+- loader/spinner/loading visibili;
+- tempo trascorso dall'ultima mutazione DOM rilevante nell'area acquisita.
+
+Se un portale non espone segnali DOM utili, Ebook2PDF continua usando la stabilità visiva.
+
+Dettagli tecnici: [`extension/RENDER_READINESS.md`](extension/RENDER_READINESS.md).
+
+## OCR locale e PDF ricercabile
+
+L'OCR viene eseguito con Tesseract.js direttamente nel browser, senza inviare le pagine a servizi OCR esterni.
+
+Pipeline:
+
+```text
+JPEG originale
+    ├──────────────→ immagine visibile nel PDF finale
+    │
+    └→ upscale OCR configurabile
+          ↓
+       Tesseract.js
+          ↓
+   PDF text-only nativo
+          ↓
+        pdf-lib
+          ↓
+JPEG originale + layer Tesseract
+          ↓
+PDF ricercabile e selezionabile
+```
+
+Il PDF visibile conserva quindi l'immagine acquisita dal browser, mentre spaziatura, baseline e geometria del testo OCR sono gestiti direttamente dal renderer PDF di Tesseract.
+
+Approfondimenti: [`extension/OCR_TUNING.md`](extension/OCR_TUNING.md).
+
+---
+
+## 🎥 Video tutorial dell'estensione
+
+> **Spazio riservato al video YouTube in cui viene mostrata l'installazione e l'utilizzo di Ebook2PDF.**
+>
+> Inserire qui il link o l'ID del video quando sarà pubblicato.
+
+<!--
+Sostituire VIDEO_ID e rimuovere il commento quando il video sarà disponibile:
+
+[![Video tutorial Ebook2PDF](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=VIDEO_ID)
+-->
+
+---
+
+# Script Python
+
+Lo script originale `ebook2pdf.py` automatizza la cattura dello schermo tramite coordinate del mouse. Non richiede l'installazione di un'estensione browser ed è utile quando il viewer non è facilmente gestibile tramite DOM.
+
+## Dipendenze
+
+Installa Python e poi:
 
 ```bash
 pip install pyautogui pillow numpy
 ```
 
-> Su Windows, `pyautogui` potrebbe richiedere moduli aggiuntivi (es. `pyscreeze`), ma `pip` li gestisce in automatico.
+Lo script utilizza:
 
-Lo script usa:
+- `pyautogui` per coordinate e click;
+- Pillow / `ImageGrab` per screenshot e PDF;
+- NumPy per la stima della nitidezza.
 
-- `pyautogui` per leggere la posizione del mouse e fare i click,
-- `Pillow (PIL)` per le immagini e la creazione del PDF,
-- `numpy` per stimare la nitidezza (sharpness) delle immagini,
-- `ImageGrab` per catturare screenshot dell’area definita.
+## Avvio
 
----
+Dalla cartella del repository:
 
-## ▶️ Utilizzo
+```bash
+python ebook2pdf.py
+```
 
-1. **Apri il documento** in un browser (solo contenuti di cui hai il pieno diritto di copia).
-2. Porta la pagina alla dimensione desiderata e **posiziona la copertina** dentro l’area che vorrai catturare.
-3. Avvia lo script Python, ad esempio:
+La procedura guidata chiede:
 
-   ```bash
-   python ebook2pdf.py
-   ```
+1. numero di pagine;
+2. ritardo tra cambio pagina e cattura;
+3. angolo superiore sinistro dell'area da acquisire;
+4. angolo inferiore destro;
+5. posizione del comando pagina successiva;
+6. percorso del PDF di uscita.
 
-4. Segui la procedura guidata in console:
-   - inserisci il **numero di pagine** da acquisire,
-   - inserisci il **ritardo minimo** tra cambio pagina e cattura (in secondi),
-   - seleziona con il mouse:
-     - l’angolo **superiore sinistro** dell’area da catturare,
-     - l’angolo **inferiore destro** dell’area da catturare,
-   - seleziona il punto in cui cliccare per andare alla **pagina successiva**,
-   - scegli (o conferma) il **percorso del PDF** di uscita.
+Una volta iniziata l'acquisizione, lo script cattura la regione scelta, controlla duplicati e qualità dell'immagine, esegue i retry previsti e crea il PDF con le pagine valide.
 
-5. Quando lo script te lo chiede, assicurati di essere sulla **copertina**, poi premi INVIO in console.
-
-Da lì in poi lo script:
-- cattura la prima pagina,
-- salva l’immagine in memoria,
-- clicca sul punto “pagina successiva”,
-- aspetta il tempo indicato,
-- ripete il ciclo finché non raggiunge il numero di pagine richiesto (o finché una serie di errori non forza uno stop anticipato).
+A differenza dell'estensione, lo script non integra l'OCR locale: se serve testo ricercabile è necessario effettuare un passaggio OCR successivo con uno strumento a propria scelta.
 
 ---
 
-## 🧠 Logica di robustezza
+## Struttura del progetto
 
-Per ogni pagina:
+```text
+ebook2pdf-python/
+├── ebook2pdf.py                 # script Python originale
+├── README.md
+└── extension/                   # estensione Chromium
+    ├── manifest.json
+    ├── background.js
+    ├── content.js
+    ├── sidepanel.html
+    ├── sidepanel.css
+    ├── sidepanel.js
+    ├── acquisition-end-fallback.js
+    ├── branding.js
+    ├── ocr.js
+    ├── native-pdf.js
+    ├── icons/
+    │   ├── icon16.png
+    │   ├── icon32.png
+    │   ├── icon48.png
+    │   └── icon128.png
+    ├── lib/
+    │   ├── tesseract/
+    │   ├── tesseract-core/
+    │   └── pdf-lib/
+    ├── tessdata/
+    └── scripts/
+```
 
-1. Attende il tempo minimo indicato (ed eventualmente 1 secondo aggiuntivo ad ogni ritentativo).
-2. Cattura l’area di schermo definita.
-3. Controlla che l’immagine **non sia identica** alla precedente.
-4. Ricava i due riquadri di verifica:
-   - alto-sinistra,
-   - basso-destra,
-   entrambi grandi metà larghezza × metà altezza dell’area catturata.
-5. Per ognuno dei due riquadri:
-   - controlla se è **monocolore** → in tal caso la pagina viene considerata “non caricata” e si ritenta;
-   - misura una stima di **nitidezza** (calcolata con il gradiente).
-6. Confronta la nitidezza (prende il minimo tra i due riquadri) con quella della **prima pagina valida**, che viene usata come **baseline**.
-7. Se la nitidezza è troppo inferiore alla baseline:
-   - in genere la pagina viene considerata **sgranata** e si ritenta;
-   - **ma** se è la **prima** o l’**ultima** pagina del blocco richiesto, l’immagine viene comunque accettata.
+## Aggiornare l'estensione dopo un `git pull`
 
-Dopo **5 tentativi falliti** sulla stessa pagina:
-- la pagina viene **segnata come “saltata”**,
-- lo script prosegue con le successive,
-- il PDF finale viene creato comunque con ciò che è stato acquisito correttamente.
+Dopo aver aggiornato il repository:
 
----
+```bash
+git pull
+```
 
-## 🧩 Post-elaborazione consigliata
-
-Una volta creato il PDF, è una buona idea fare **due passaggi manuali**:
-
-### 1. Controllo e rimozione di pagine duplicate
-
-Durante la cattura può capitare che:
-- l’ultima pagina venga acquisita più volte,
-- qualche pagina venga ripetuta per via di rallentamenti nel caricamento.
-
-Per sistemare il PDF:
-
-1. Apri il PDF generato con uno strumento di organizzazione.
-2. Elimina:
-   - le pagine evidentemente duplicate,
-   - eventuali pagine con caricamento palesemente incompleto.
-
-Strumento consigliato (online):
-
-- **Organizzare / riordinare / eliminare pagine PDF**:  
-  https://www.ilovepdf.com/it/organizzare-pdf
-
-Con questo servizio puoi:
-- vedere tutte le pagine in miniatura,
-- trascinare per cambiare ordine,
-- cancellare le duplicate,
-- risalvare un PDF “pulito”.
+apri nuovamente `chrome://extensions/` e premi **Ricarica** sulla scheda di Ebook2PDF. Non è necessario rimuovere e reinstallare l'estensione.
 
 ---
 
-### 2. Estrarre il testo via OCR
+## Limiti noti
 
-Se il PDF contiene solo immagini (screenshot delle pagine), per poter cercare e copiare il testo ti serve un passaggio di **OCR** (riconoscimento ottico dei caratteri).
+- l'acquisizione riguarda solo ciò che è visibile e renderizzato nella scheda;
+- iframe cross-origin e alcuni viewer possono impedire l'accesso al comando pagina successiva;
+- documenti molto lunghi, soprattutto con OCR e upscale elevato, possono richiedere molta RAM;
+- la qualità OCR dipende da risoluzione, contrasto, font e layout della pagina;
+- nessun sistema automatico può garantire compatibilità con ogni viewer web: i controlli avanzati sono configurabili proprio per adattarsi a comportamenti differenti.
 
-Strumento consigliato (online):
+## Privacy
 
-- **OCR su PDF (trasforma immagini in testo ricercabile)**:  
-  https://tools.pdf24.org/en/ocr-pdf
+Screenshot, OCR e composizione PDF vengono eseguiti localmente dal browser. Ebook2PDF non richiede API cloud per l'OCR e non invia intenzionalmente le pagine a servizi esterni.
 
-Passaggi tipici:
+## Nota legale ed etica
 
-1. Carica il PDF “pulito” (già ripulito da pagine duplicate).
-2. Seleziona la lingua corretta (es. italiano).
-3. Avvia l’OCR.
-4. Scarica il **nuovo PDF**:
-   - il contenuto sarà ancora visivamente identico,
-   - ma sotto le immagini ci sarà un layer di testo ricercabile e selezionabile.
-
-In questo modo ottieni un PDF:
-- con la **struttura grafica** del documento originale,
-- ma **usabile**: ci puoi fare ricerche per parola, copia/incolla, indicizzazione ecc.
-
----
-
-## 🔐 Nota legale / etica
-
-Usa questo script **solo** per:
-
-- documenti di cui sei **titolare dei diritti**, oppure
-- documenti per cui hai ottenuto **esplicito permesso** alla copia e all’uso offline.
-
-Evita di violare:
-- copyright,
-- licenze d’uso,
-- condizioni di servizio delle piattaforme su cui il documento è ospitato.
-
----
-
-## 💡 Suggerimenti futuri (facoltativi)
-
-Possibili estensioni:
-
-- Aggiungere una modalità **“debug”** che salva i due riquadri di controllo su disco per analizzarli.
-- Loggare su file:
-  - la nitidezza rilevata per ogni pagina,
-  - le pagine saltate e il motivo (monocolore, duplicata, sgranata).
-- Creare una piccola **GUI** (es. con Tkinter) per evitare l’interazione da console.
-
-Flusso consigliato riassunto:
-
-1. Catturi con lo script → ottieni `documento_raw.pdf`
-2. Rimuovi/riordini pagine → ottieni `documento_pulito.pdf`
-3. Esegui OCR → ottieni `documento_ricercabile.pdf`
-
-così puoi portarti sempre dietro una versione offline, comoda e consultabile.
-
+Utilizza Ebook2PDF esclusivamente con contenuti per i quali disponi dei diritti o di una esplicita autorizzazione alla copia e all'uso offline. Rispetta copyright, licenze d'uso e condizioni di servizio della piattaforma che ospita il documento.
