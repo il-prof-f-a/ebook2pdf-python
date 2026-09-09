@@ -1,9 +1,28 @@
+async function ensureContentScript(tabId) {
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: "PING" });
+    return true;
+  } catch (_) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["content.js"]
+      });
+      return true;
+    } catch (error) {
+      console.warn("Ebook2PDF: impossibile iniettare content.js", error);
+      return false;
+    }
+  }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 });
 
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id) return;
+  await ensureContentScript(tab.id);
   await chrome.sidePanel.open({ tabId: tab.id });
 });
 
