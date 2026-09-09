@@ -1,21 +1,39 @@
-# OCR: struttura, spazi e segmentazione
+# OCR: qualità, layout e PDF nativo
 
-Dalla versione 0.4.0 Ebook2PDF non usa più l'output OCR come semplice lista di parole indipendenti.
+Dalla versione 0.5.0 Ebook2PDF usa direttamente il **renderer PDF di Tesseract** per il layer testuale.
 
 ## Pipeline
 
-Tesseract restituisce una struttura gerarchica:
-
 ```text
-block
-└── paragraph
-    └── line
-        └── word
+JPEG originale
+    ├──────────────→ immagine visibile finale
+    │
+    └→ upscale OCR configurabile
+          ↓
+       Tesseract.js
+          ↓
+ PDF text-only nativo
+          ↓
+        pdf-lib
+          ↓
+JPEG originale + layer Tesseract
 ```
 
-Ebook2PDF conserva questa struttura e genera il text layer PDF per **righe complete**. In questo modo gli spazi riconosciuti restano dentro una singola stringa PDF e non devono essere dedotti dal lettore PDF in base alla distanza tra parole separate.
+Questo evita la ricostruzione manuale del testo tramite bounding box, font Helvetica e posizionamento parola-per-parola.
 
-I frammenti che Tesseract colloca sulla stessa riga vengono ricomposti soltanto se appartengono allo stesso blocco e allo stesso paragrafo e hanno una forte sovrapposizione verticale. Questo evita, per quanto possibile, di unire colonne o riquadri differenti.
+## Upscale OCR
+
+Tesseract lavora spesso meglio con testo piccolo se l'immagine viene ingrandita prima del riconoscimento. Ebook2PDF permette:
+
+- 1×;
+- 1,5×;
+- 2× — predefinito;
+- 2,5×;
+- 3×.
+
+L'immagine ingrandita serve **solo** a Tesseract. Nel PDF finale viene riutilizzato il JPEG originale.
+
+Per mantenere il layer text-only perfettamente allineato, il DPI passato a Tesseract viene moltiplicato per lo stesso fattore dell'upscale.
 
 ## Spazi tra parole
 
@@ -26,6 +44,8 @@ preserve_interword_spaces=1
 ```
 
 È possibile disattivarlo dalle impostazioni OCR.
+
+Con il renderer PDF nativo non è più Ebook2PDF a dedurre la distanza fra parole: spazi, baseline e posizionamento sono responsabilità di Tesseract.
 
 ## Page Segmentation Mode (PSM)
 
@@ -47,15 +67,24 @@ Utile quando il testo è distribuito in zone separate e non è importante imporr
 
 ## Strategia consigliata
 
-Per un libro scolastico normale partire con:
+Per un normale libro scolastico partire con:
 
 ```text
 PSM 3
 preserve_interword_spaces = attivo
+upscale OCR = 2×
 ```
 
 Cambiare PSM soltanto se uno specifico libro presenta un layout ricorrente che viene segmentato male.
 
-## Nota sul PDF
+Se il testo è molto piccolo, provare prima 2,5× o 3×; questo aumenta però tempi e memoria.
 
-L'immagine della pagina resta invariata. Il testo OCR viene aggiunto come layer invisibile e serve soltanto per ricerca, selezione e copia. La qualità della selezione dipende quindi sia dal riconoscimento Tesseract sia dalla qualità della segmentazione delle righe.
+## PDF text-only
+
+Tesseract viene chiamato con output PDF e opzione equivalente a `textonly_pdf=1`. Il suo PDF contiene il layer OCR ma non l'immagine. Ebook2PDF copia quella pagina in un nuovo documento e vi aggiunge il JPEG catturato.
+
+Il vantaggio è che il documento mantiene l'immagine esatta acquisita dal browser, mentre ricerca, selezione e copia del testo sono basate sulla geometria prodotta direttamente da Tesseract.
+
+## Possibili sviluppi successivi
+
+Se alcune pagine restano problematiche, la strategia successiva consigliata è un **secondo passaggio selettivo** su regioni a bassa confidenza, usando un PSM diverso per il singolo riquadro invece di cambiare il PSM dell'intera pagina.
