@@ -3,6 +3,18 @@
   let captureRegion = null;
   let lastRelevantMutationAt = performance.now();
 
+  const CLICKABLE_SELECTOR = [
+    "button",
+    "a[href]",
+    "input[type='button']",
+    "input[type='submit']",
+    "input[type='image']",
+    "[role='button']",
+    "[role='link']",
+    "[onclick]",
+    "summary"
+  ].join(",");
+
   function cleanup() {
     if (overlay) {
       overlay.remove();
@@ -37,7 +49,7 @@
     let current = el;
     while (current && current.nodeType === Node.ELEMENT_NODE && current !== document.body) {
       let part = current.tagName.toLowerCase();
-      if (current.classList.length) {
+      if (current.classList?.length) {
         part += "." + [...current.classList].slice(0, 2).map(cssEscape).join(".");
       }
       const parent = current.parentElement;
@@ -53,6 +65,90 @@
       current = parent;
     }
     return parts.join(" > ");
+  }
+
+  function isLikelyClickable(el) {
+    if (!(el instanceof Element)) return false;
+    try {
+      if (el.matches(CLICKABLE_SELECTOR)) return true;
+    } catch (_) {}
+    if (typeof el.click === "function") {
+      const tag = String(el.tagName || "").toLowerCase();
+      if (["button", "a", "input", "summary", "label"].includes(tag)) return true;
+    }
+    try {
+      if (getComputedStyle(el).cursor === "pointer") return true;
+    } catch (_) {}
+    return false;
+  }
+
+  function findClickableTarget(el) {
+    if (!(el instanceof Element)) return null;
+
+    try {
+      const semantic = el.closest(CLICKABLE_SELECTOR);
+      if (semantic) return semantic;
+    } catch (_) {}
+
+    let current = el;
+    for (let depth = 0; current && depth < 8; depth++) {
+      if (isLikelyClickable(current)) return current;
+      current = current.parentElement;
+    }
+
+    return el;
+  }
+
+  function targetText(el) {
+    if (!(el instanceof Element)) return "";
+    return String(
+      el.getAttribute?.("aria-label") ||
+      el.getAttribute?.("title") ||
+      el.textContent ||
+      ""
+    ).trim().replace(/\s+/g, " ").slice(0, 80);
+  }
+
+  function dispatchSyntheticClick(el) {
+    if (!(el instanceof Element)) throw new Error("Elemento da cliccare non valido");
+
+    const rect = el.getBoundingClientRect();
+    const clientX = rect.left + Math.max(0, rect.width / 2);
+    const clientY = rect.top + Math.max(0, rect.height / 2);
+    const common = {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      view: window,
+      clientX,
+      clientY,
+      button: 0,
+      buttons: 1
+    };
+
+    if (typeof PointerEvent === "function") {
+      el.dispatchEvent(new PointerEvent("pointerdown", { ...common, pointerId: 1, pointerType: "mouse", isPrimary: true }));
+    }
+    el.dispatchEvent(new MouseEvent("mousedown", common));
+
+    if (typeof PointerEvent === "function") {
+      el.dispatchEvent(new PointerEvent("pointerup", { ...common, buttons: 0, pointerId: 1, pointerType: "mouse", isPrimary: true }));
+    }
+    el.dispatchEvent(new MouseEvent("mouseup", { ...common, buttons: 0 }));
+    el.dispatchEvent(new MouseEvent("click", { ...common, buttons: 0 }));
+  }
+
+  function clickElement(el) {
+    const target = findClickableTarget(el);
+    if (!target) throw new Error("Elemento 'pagina successiva' non trovato");
+
+    if (typeof target.click === "function") {
+      target.click();
+      return { method: "native", target };
+    }
+
+    dispatchSyntheticClick(target);
+    return { method: "events", target };
   }
 
   function normalizeRegion(region) {
@@ -193,10 +289,13 @@
         const x = e.clientX;
         const y = e.clientY;
         cleanup();
-        const el = document.elementFromPoint(x, y);
-        resolve(el ? {
-          selector: selectorFor(el),
-          text: (el.innerText || el.getAttribute("aria-label") || "").trim().slice(0, 80)
+        const rawElement = document.elementFromPoint(x, y);
+        const target = findClickableTarget(rawElement);
+        resolve(target ? {
+          selector: selectorFor(target),
+          text: targetText(target),
+          selectedTag: String(rawElement?.tagName || "").toLowerCase(),
+          targetTag: String(target.tagName || "").toLowerCase()
         } : null);
       }, { once: true });
     });
@@ -274,8 +373,12 @@
         const el = document.querySelector(message.selector);
         if (!el) throw new Error("Elemento 'pagina successiva' non trovato");
         lastRelevantMutationAt = performance.now();
-        el.click();
-        sendResponse({ ok: true });
+        const result = clickElement(el);
+        sendResponse({
+          ok: true,
+          method: result.method,
+          targetTag: String(result.target?.tagName || "").toLowerCase()
+        });
       } catch (error) {
         sendResponse({ ok: false, error: String(error) });
       }
