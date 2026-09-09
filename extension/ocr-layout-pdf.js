@@ -3,6 +3,7 @@
     ocrPsm: "3",
     preserveInterwordSpaces: true
   });
+  let ocrStopRequested = false;
 
   function $(id) {
     return document.getElementById(id);
@@ -61,9 +62,6 @@
     }));
   }
 
-  // Sovrascrive il layer precedente parola-per-parola con un layer per riga.
-  // Gli spazi riconosciuti da Tesseract restano dentro un'unica stringa PDF,
-  // evitando che il reader debba dedurli dalla distanza tra oggetti separati.
   globalThis.buildOcrCommands = function buildStructuredOcrCommands(page, widthPt, heightPt) {
     const lines = Array.isArray(page?.ocr?.lines) && page.ocr.lines.length
       ? page.ocr.lines
@@ -84,10 +82,6 @@
       const fontSize = Math.min(72, Math.max(3, boxHeight * 0.88));
       const x = Math.max(0, bbox.x0 * scaleX);
       const y = Math.max(0, heightPt - (bbox.y1 * scaleY) + (fontSize * 0.10));
-
-      // La larghezza viene adattata alla bounding box dell'intera riga.
-      // Poiché la stringa contiene già gli spazi OCR, il testo copiato dal PDF
-      // mantiene molto meglio la separazione delle parole.
       const visibleChars = Math.max(1, cleanTextPreserveSpaces(line.text).length);
       const estimatedWidth = Math.max(1, visibleChars * fontSize * 0.50);
       const horizontalScale = Math.min(300, Math.max(20, (boxWidth / estimatedWidth) * 100));
@@ -124,12 +118,12 @@
     };
   }
 
-  // Sostituisce il runner OCR del pannello per passare i parametri di layout.
   globalThis.runOcr = async function runStructuredOcr(pages, language) {
     if (!globalThis.Ebook2PdfOcr?.recognizePages) {
       throw new Error("Modulo OCR non disponibile.");
     }
 
+    ocrStopRequested = false;
     $("ocrProgressBox").classList.remove("hidden");
     $("ocrProgress").value = 0;
     $("ocrProgressText").textContent = "Inizializzazione Tesseract...";
@@ -145,7 +139,7 @@
       language,
       pageSegMode: psm,
       preserveInterwordSpaces: preserveSpaces,
-      shouldStop: () => globalThis.stopRequested === true,
+      shouldStop: () => ocrStopRequested,
       onProgress: message => {
         if (typeof globalThis.updateOcrProgress === "function") {
           globalThis.updateOcrProgress(message);
@@ -171,6 +165,14 @@
       console.warn("Ebook2PDF: impossibile caricare le impostazioni OCR avanzate", error);
     }
   }
+
+  $("start")?.addEventListener("click", () => {
+    ocrStopRequested = false;
+  }, true);
+
+  $("stop")?.addEventListener("click", () => {
+    ocrStopRequested = true;
+  });
 
   $("resetSettings")?.addEventListener("click", () => {
     setTimeout(() => {
