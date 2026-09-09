@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Autore:</strong> proffa<br>
+  <strong>Autore:</strong> Il Prof.<br>
   <strong>Repository:</strong> <a href="https://github.com/il-prof-f-a/ebook2pdf-python">github.com/il-prof-f-a/ebook2pdf-python</a>
 </p>
 
