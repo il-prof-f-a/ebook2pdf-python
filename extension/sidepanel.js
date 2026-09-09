@@ -10,6 +10,13 @@ const DEFAULT_SETTINGS = Object.freeze({
   delay: 1.5,
   retryDelay: 2.0,
   attempts: 5,
+  renderMaxWait: 12,
+  stabilityInterval: 0.4,
+  stableSamples: 2,
+  stabilityThresholdPct: 0.15,
+  pageChangeThresholdPct: 0.20,
+  useDomSignals: true,
+  domIdleMs: 500,
   sharpnessRatio: 0.50,
   checkDuplicates: true,
   checkQuality: true,
@@ -35,10 +42,14 @@ function languageLabel(value) {
   return "Italiano + Inglese";
 }
 
+function clampNumber(value, fallback, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
 function normalizeRatio(value) {
-  const ratio = Number(value);
-  if (!Number.isFinite(ratio) || ratio <= 0 || ratio > 1) return DEFAULT_SETTINGS.sharpnessRatio;
-  return Math.min(1, Math.max(0.05, ratio));
+  return clampNumber(value, DEFAULT_SETTINGS.sharpnessRatio, 0.05, 1);
 }
 
 function normalizePsm(value) {
@@ -47,9 +58,7 @@ function normalizePsm(value) {
 }
 
 function normalizeOcrScale(value) {
-  const scale = Number(value);
-  if (!Number.isFinite(scale)) return DEFAULT_SETTINGS.ocrScale;
-  return Math.min(3, Math.max(1, scale));
+  return clampNumber(value, DEFAULT_SETTINGS.ocrScale, 1, 3);
 }
 
 function normalizeSettings(settings) {
@@ -63,13 +72,22 @@ function normalizeSettings(settings) {
   }
 
   return {
-    delay: Math.max(0.2, Number(source.delay) || DEFAULT_SETTINGS.delay),
-    retryDelay: Math.max(0.5, Number(source.retryDelay) || DEFAULT_SETTINGS.retryDelay),
-    attempts: Math.min(20, Math.max(1, Number(source.attempts) || DEFAULT_SETTINGS.attempts)),
+    delay: clampNumber(source.delay, DEFAULT_SETTINGS.delay, 0.2, 10),
+    retryDelay: clampNumber(source.retryDelay, DEFAULT_SETTINGS.retryDelay, 0.5, 20),
+    attempts: Math.round(clampNumber(source.attempts, DEFAULT_SETTINGS.attempts, 1, 20)),
+    renderMaxWait: clampNumber(source.renderMaxWait, DEFAULT_SETTINGS.renderMaxWait, 2, 60),
+    stabilityInterval: clampNumber(source.stabilityInterval, DEFAULT_SETTINGS.stabilityInterval, 0.2, 3),
+    stableSamples: Math.round(clampNumber(source.stableSamples, DEFAULT_SETTINGS.stableSamples, 1, 8)),
+    stabilityThresholdPct: clampNumber(source.stabilityThresholdPct, DEFAULT_SETTINGS.stabilityThresholdPct, 0.01, 5),
+    pageChangeThresholdPct: clampNumber(source.pageChangeThresholdPct, DEFAULT_SETTINGS.pageChangeThresholdPct, 0.01, 10),
+    useDomSignals: source.useDomSignals !== false,
+    domIdleMs: Math.round(clampNumber(source.domIdleMs, DEFAULT_SETTINGS.domIdleMs, 100, 5000)),
     sharpnessRatio: normalizeRatio(ratio),
     checkDuplicates: source.checkDuplicates !== false,
     checkQuality: source.checkQuality !== false,
-    ocrLanguage: ["ita", "eng", "ita+eng"].includes(source.ocrLanguage) ? source.ocrLanguage : DEFAULT_SETTINGS.ocrLanguage,
+    ocrLanguage: ["ita", "eng", "ita+eng"].includes(source.ocrLanguage)
+      ? source.ocrLanguage
+      : DEFAULT_SETTINGS.ocrLanguage,
     ocrPsm: normalizePsm(source.ocrPsm),
     preserveInterwordSpaces: source.preserveInterwordSpaces !== false,
     ocrScale: normalizeOcrScale(source.ocrScale)
@@ -81,6 +99,13 @@ function applySettings(settings) {
   $("delay").value = merged.delay;
   $("retryDelay").value = merged.retryDelay;
   $("attempts").value = merged.attempts;
+  $("renderMaxWait").value = merged.renderMaxWait;
+  $("stabilityInterval").value = merged.stabilityInterval;
+  $("stableSamples").value = merged.stableSamples;
+  $("stabilityThresholdPct").value = merged.stabilityThresholdPct;
+  $("pageChangeThresholdPct").value = merged.pageChangeThresholdPct;
+  $("useDomSignals").checked = merged.useDomSignals;
+  $("domIdleMs").value = merged.domIdleMs;
   $("sharpnessRatio").value = merged.sharpnessRatio;
   $("checkDuplicates").checked = merged.checkDuplicates;
   $("checkQuality").checked = merged.checkQuality;
@@ -96,6 +121,13 @@ function settingsFromForm() {
     delay: $("delay").value,
     retryDelay: $("retryDelay").value,
     attempts: $("attempts").value,
+    renderMaxWait: $("renderMaxWait").value,
+    stabilityInterval: $("stabilityInterval").value,
+    stableSamples: $("stableSamples").value,
+    stabilityThresholdPct: $("stabilityThresholdPct").value,
+    pageChangeThresholdPct: $("pageChangeThresholdPct").value,
+    useDomSignals: $("useDomSignals").checked,
+    domIdleMs: $("domIdleMs").value,
     sharpnessRatio: $("sharpnessRatio").value,
     checkDuplicates: $("checkDuplicates").checked,
     checkQuality: $("checkQuality").checked,
@@ -176,6 +208,10 @@ async function cropCapture(dataUrl, selection) {
   const jpeg = new Uint8Array(await jpegBlob.arrayBuffer());
 
   return { width: sw, height: sh, imageData, jpeg };
+}
+
+async function captureRegionNow() {
+  return cropCapture(await captureVisible(), region);
 }
 
 function quadrantStats(imageData, x0, y0, width, height) {
@@ -271,6 +307,119 @@ function imageDifference(a, b) {
   }
 
   return samples ? diff / (samples * 255) : 1;
+}
+
+function domStateSummary(state) {
+  if (!state) return "segnali DOM non disponibili";
+  const parts = [];
+  if (!state.documentReady) parts.push("documento non completo");
+  if (!state.fontsReady) parts.push("font in caricamento");
+  if (state.busyCount) parts.push(`${state.busyCount} loader/busy visibili`);
+  if (state.incompleteImageCount) parts.push(`${state.incompleteImageCount} immagini incomplete`);
+  if (!state.domIdle) parts.push(`DOM modificato ${state.mutationIdleMs} ms fa`);
+  return parts.length ? parts.join(", ") : "DOM pronto";
+}
+
+async function readDomRenderState(settings) {
+  if (!settings.useDomSignals) return null;
+  try {
+    const state = await sendToTab({
+      type: "GET_RENDER_STATE",
+      region,
+      mutationIdleMs: settings.domIdleMs
+    });
+    return state?.ok ? state : null;
+  } catch (error) {
+    console.warn("Ebook2PDF: segnali DOM non disponibili", error);
+    return null;
+  }
+}
+
+async function waitForRenderedPage(previousImageData, settings, pageNumber) {
+  const requireChange = !!previousImageData && settings.checkDuplicates;
+  const changeThreshold = settings.pageChangeThresholdPct / 100;
+  const stableThreshold = settings.stabilityThresholdPct / 100;
+  const intervalMs = settings.stabilityInterval * 1000;
+  const deadline = performance.now() + (settings.renderMaxWait * 1000);
+
+  let changed = !requireChange;
+  let previousFrame = null;
+  let lastCapture = null;
+  let lastDomState = null;
+  let stableComparisons = 0;
+  let changeDifference = null;
+  let frameDifference = null;
+  let domUnavailableLogged = false;
+
+  await sleep(settings.delay * 1000);
+
+  while (!stopRequested && performance.now() < deadline) {
+    const capture = await captureRegionNow();
+    lastCapture = capture;
+
+    if (requireChange && !changed) {
+      changeDifference = imageDifference(capture.imageData, previousImageData);
+      if (changeDifference >= changeThreshold) {
+        changed = true;
+        previousFrame = null;
+        stableComparisons = 0;
+        log(`Pagina ${pageNumber}: cambio rilevato (${(changeDifference * 100).toFixed(3)}%).`);
+      } else {
+        await sleep(intervalMs);
+        continue;
+      }
+    }
+
+    if (previousFrame) {
+      frameDifference = imageDifference(capture.imageData, previousFrame.imageData);
+      if (frameDifference <= stableThreshold) {
+        stableComparisons++;
+      } else {
+        stableComparisons = 0;
+      }
+    }
+    previousFrame = capture;
+
+    lastDomState = await readDomRenderState(settings);
+    if (settings.useDomSignals && !lastDomState && !domUnavailableLogged) {
+      log(`Pagina ${pageNumber}: segnali DOM non disponibili, uso solo la stabilità visiva.`);
+      domUnavailableLogged = true;
+    }
+
+    const visualReady = stableComparisons >= settings.stableSamples;
+    const domReady = !settings.useDomSignals || !lastDomState || lastDomState.ready;
+
+    if (visualReady && domReady) {
+      log(
+        `Pagina ${pageNumber}: rendering stabile ` +
+        `(${stableComparisons} conferme, Δ ${(Number(frameDifference || 0) * 100).toFixed(3)}%; ` +
+        `${domStateSummary(lastDomState)}).`
+      );
+      return {
+        capture,
+        changed,
+        timedOut: false,
+        stableComparisons,
+        frameDifference,
+        changeDifference,
+        domState: lastDomState
+      };
+    }
+
+    await sleep(intervalMs);
+  }
+
+  if (!lastCapture && !stopRequested) lastCapture = await captureRegionNow();
+
+  return {
+    capture: lastCapture,
+    changed,
+    timedOut: true,
+    stableComparisons,
+    frameDifference,
+    changeDifference,
+    domState: lastDomState
+  };
 }
 
 function encode(text) {
@@ -491,11 +640,6 @@ $("start").addEventListener("click", async () => {
 
   const totalPages = Math.max(1, Number($("pages").value) || 1);
   const settings = settingsFromForm();
-  const delayMs = settings.delay * 1000;
-  const retryDelayMs = settings.retryDelay * 1000;
-  const maxAttempts = settings.attempts;
-  const checkDuplicates = settings.checkDuplicates;
-  const checkQuality = settings.checkQuality;
   const enableOcr = $("enableOcr").checked;
 
   stopRequested = false;
@@ -503,84 +647,100 @@ $("start").addEventListener("click", async () => {
   $("stop").disabled = false;
   $("progress").max = totalPages;
   $("progress").value = 0;
+  $("progressText").textContent = `0/${totalPages}`;
   $("log").textContent = "";
   $("ocrProgressBox").classList.add("hidden");
   setStep(enableOcr ? "1/3 — Acquisizione" : "1/2 — Acquisizione");
   log(
-    `Parametri: ratio nitidezza ${settings.sharpnessRatio.toFixed(2)}, ` +
-    `retry ${settings.retryDelay.toFixed(1)}s, ${maxAttempts} tentativi.`
+    `Rendering: max ${settings.renderMaxWait.toFixed(1)}s, intervallo ${settings.stabilityInterval.toFixed(1)}s, ` +
+    `${settings.stableSamples} conferme, soglia stabilità ${settings.stabilityThresholdPct.toFixed(2)}%, ` +
+    `DOM ${settings.useDomSignals ? "attivo" : "disattivo"}.`
   );
+  if (settings.checkQuality) {
+    log(`Nitidezza diagnostica: ratio ${settings.sharpnessRatio.toFixed(2)} (non causa più lo scarto della pagina).`);
+  }
 
   const pages = [];
-  const skipped = [];
   let previousImageData = null;
   let baselineSharpness = null;
   let searchablePdf = false;
+  let navigationInterrupted = false;
 
   try {
     for (let pageIndex = 0; pageIndex < totalPages && !stopRequested; pageIndex++) {
-      let accepted = null;
-      let lastReason = "";
+      const pageNumber = pageIndex + 1;
+      let readiness = null;
 
-      for (let attempt = 1; attempt <= maxAttempts && !stopRequested; attempt++) {
-        if (pageIndex > 0 || attempt > 1) {
-          await sleep(attempt === 1 ? delayMs : retryDelayMs);
+      if (pageIndex === 0) {
+        readiness = await waitForRenderedPage(null, settings, pageNumber);
+      } else {
+        let changed = false;
+
+        for (let attempt = 1; attempt <= settings.attempts && !stopRequested; attempt++) {
+          const clicked = await sendToTab({ type: "CLICK_NEXT", selector: nextTarget.selector });
+          if (!clicked?.ok) throw new Error(clicked?.error || "Impossibile avanzare alla pagina successiva");
+
+          log(`Pagina ${pageNumber}: cambio pagina, tentativo ${attempt}/${settings.attempts}.`);
+          readiness = await waitForRenderedPage(previousImageData, settings, pageNumber);
+
+          if (!settings.checkDuplicates || readiness.changed) {
+            changed = true;
+            break;
+          }
+
+          log(
+            `Pagina ${pageNumber}: il contenuto non è cambiato abbastanza ` +
+            `(Δ ${(Number(readiness.changeDifference || 0) * 100).toFixed(3)}%). Riprovo il comando avanti.`
+          );
+          if (attempt < settings.attempts) await sleep(settings.retryDelay * 1000);
         }
 
-        const capture = await cropCapture(await captureVisible(), region);
-
-        if (checkDuplicates && previousImageData) {
-          const difference = imageDifference(capture.imageData, previousImageData);
-          if (difference < 0.002) {
-            lastReason = `duplicata (differenza ${(difference * 100).toFixed(3)}%)`;
-            log(`Pagina ${pageIndex + 1}, tentativo ${attempt}: ${lastReason}`);
-            continue;
-          }
+        if (!changed && settings.checkDuplicates && !stopRequested) {
+          navigationInterrupted = true;
+          log(`Pagina ${pageNumber}: cambio pagina non rilevato. Interrompo l'acquisizione senza saltare la pagina.`);
+          break;
         }
+      }
 
-        if (checkQuality) {
-          const validation = validateImage(capture.imageData, baselineSharpness, settings.sharpnessRatio);
-          lastReason = validation.reason;
-          if (!validation.ok) {
-            const edgePage = pageIndex === 0 || pageIndex === totalPages - 1;
-            if (!(validation.type === "blurry" && edgePage)) {
-              log(`Pagina ${pageIndex + 1}, tentativo ${attempt}: ${validation.reason}`);
-              continue;
-            }
-            log(`Pagina ${pageIndex + 1}: accettata pur sotto soglia perché iniziale/finale.`);
-          }
-          if (baselineSharpness == null && validation.sharpness != null) {
-            baselineSharpness = validation.sharpness;
-            log(`Baseline nitidezza impostata a ${baselineSharpness.toFixed(2)}.`);
-          }
+      if (stopRequested) break;
+      if (!readiness?.capture) throw new Error(`Impossibile acquisire la pagina ${pageNumber}`);
+
+      if (readiness.timedOut) {
+        log(
+          `Pagina ${pageNumber}: timeout attesa rendering; acquisisco comunque l'ultimo frame stabile disponibile ` +
+          `(${domStateSummary(readiness.domState)}).`
+        );
+      }
+
+      const capture = readiness.capture;
+
+      if (settings.checkQuality) {
+        const validation = validateImage(capture.imageData, baselineSharpness, settings.sharpnessRatio);
+        if (baselineSharpness == null && validation.sharpness != null) {
+          baselineSharpness = validation.sharpness;
+          log(`Baseline nitidezza impostata a ${baselineSharpness.toFixed(2)}.`);
         }
-
-        accepted = capture;
-        break;
+        if (!validation.ok) {
+          log(`Pagina ${pageNumber}: AVVISO qualità — ${validation.reason}. La pagina viene comunque acquisita.`);
+        }
       }
 
-      if (accepted) {
-        pages.push({ width: accepted.width, height: accepted.height, jpeg: accepted.jpeg });
-        previousImageData = accepted.imageData;
-        log(`Pagina ${pageIndex + 1}/${totalPages} acquisita.`);
-      } else if (!stopRequested) {
-        skipped.push(pageIndex + 1);
-        log(`Pagina ${pageIndex + 1} saltata dopo ${maxAttempts} tentativi${lastReason ? `: ${lastReason}` : "."}`);
-      }
+      pages.push({ width: capture.width, height: capture.height, jpeg: capture.jpeg });
+      previousImageData = capture.imageData;
+      log(`Pagina ${pageNumber}/${totalPages} acquisita.`);
 
-      $("progress").value = pageIndex + 1;
-      $("progressText").textContent = `${pageIndex + 1}/${totalPages} — salvate ${pages.length}, saltate ${skipped.length}`;
-
-      if (pageIndex < totalPages - 1 && !stopRequested) {
-        const clicked = await sendToTab({ type: "CLICK_NEXT", selector: nextTarget.selector });
-        if (!clicked?.ok) throw new Error(clicked?.error || "Impossibile avanzare alla pagina successiva");
-      }
+      $("progress").value = pageNumber;
+      $("progressText").textContent = `${pageNumber}/${totalPages} — salvate ${pages.length}`;
     }
 
     if (!pages.length) {
-      log("Nessuna pagina valida: PDF non creato.");
-      setStep("Operazione terminata senza pagine valide.");
+      log("Nessuna pagina acquisita: PDF non creato.");
+      setStep("Operazione terminata senza pagine.");
       return;
+    }
+
+    if (navigationInterrupted) {
+      log(`Acquisizione interrotta dopo ${pages.length} pagine per evitare duplicati o salti di numerazione.`);
     }
 
     if (enableOcr && !stopRequested) {
@@ -616,8 +776,6 @@ $("start").addEventListener("click", async () => {
       ? "PDF ricercabile con layer Tesseract nativo generato e inviato al download."
       : "PDF generato e inviato al download.");
     setStep("Completato.");
-
-    if (skipped.length) log(`Pagine saltate: ${skipped.join(", ")}`);
   } catch (error) {
     log(`ERRORE: ${error?.message || error}`);
     setStep("Errore.");
