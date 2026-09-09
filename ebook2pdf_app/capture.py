@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from io import BytesIO
+from typing import Optional, Tuple
+
+import numpy as np
+import pyautogui
+from PIL import Image, ImageGrab
+
+
+@dataclass(frozen=True)
+class CaptureRegion:
+    left: int
+    top: int
+    width: int
+    height: int
+
+    @property
+    def bbox(self) -> Tuple[int, int, int, int]:
+        return (
+            self.left,
+            self.top,
+            self.left + self.width,
+            self.top + self.height,
+        )
+
+
+@dataclass(frozen=True)
+class ClickPoint:
+    x: int
+    y: int
+
+
+@dataclass
+class CapturedPage:
+    width: int
+    height: int
+    jpeg: bytes
+
+
+@dataclass
+class QualityResult:
+    ok: bool
+    sharpness: Optional[float]
+    threshold: Optional[float]
+    reason: str
+
+
+def capture_region(region: CaptureRegion) -> Image.Image:
+    image = ImageGrab.grab(bbox=region.bbox, all_screens=True)
+    return image.convert("RGB")
+
+
+def click_next(point: ClickPoint) -> None:
+    pyautogui.click(point.x, point.y)
+
+
+def current_mouse_position() -> ClickPoint:
+    pos = pyautogui.position()
+    return ClickPoint(int(pos.x), int(pos.y))
+
+
+def make_region(first: ClickPoint, second: ClickPoint) -> CaptureRegion:
+    left = min(first.x, second.x)
+    top = min(first.y, second.y)
+    width = abs(second.x - first.x)
+    height = abs(second.y - first.y)
+    if width < 10 or height < 10:
+        raise ValueError("L'area selezionata è troppo piccola.")
+    return CaptureRegion(left, top, width, height)
+
+
+def to_captured_page(image: Image.Image, quality: int = 90) -> CapturedPage:
+    out = BytesIO()
+    image.convert("RGB").save(out, format="JPEG", quality=quality, optimize=True)
+    return CapturedPage(image.width, image.height, out.getvalue())
+
+
+def image_difference(first: Image.Image, second: Image.Image, step: int = 4) -> float:
+    if first.size != second.size:
+        return 1.0
+
+    a = np.asarray(first.convert("RGB"), dtype=np.int16)[::step, ::step]
+    b = np.asarray(second.convert("RGB"), dtype=np.int16)[::step, ::step]
+    if a.size == 0:
+        return 1.0
+    return float(np.abs(a - b).mean() / 255.0)
+
+
+def image_sharpness(image: Image.Image) -> float:
+    gray = np.asarray(image.convert("L"), dtype=np.float32)
+    if gray.size == 0:
+        return 0.0
+    gy, gx = np.gradient(gray)
+    return float(np.sqrt(gx * gx + gy * gy).mean())
+
+
+def diagnostic_quality(
+    image: Image.Image,
+    baseline_sharpness: Optional[float],
+    ratio: float,
+) -> QualityResult:
+    width, height = image.size
+    half_w = max(1, width // 2)
+    half_h = max(1, height // 2)
+    top_left = image.crop((0, 0, half_w, half_h))
+    bottom_right = image.crop((half_w, half_h, width, height))
+
+    ranges = []
+    sharpness_values = []
+    for quadrant in (top_left, bottom_right):
+        gray = np.asarray(quadrant.convert("L"), dtype=np.float32)
+        if gray.size == 0:
+            ranges.append(0.0)
+            sharpness_values.append(0.0)
+            continue
+        ranges.append(float(gray.max() - gray.min()))
+        sharpness_values.append(image_sharpness(quadrant))
+
+    combined = min(sharpness_values)
+    if min(ranges) <= 3.0:
+        return QualityResult(
+            False,
+            combined,
+            None,
+            "uno dei quadranti è quasi monocolore",
+        )
+
+    if baseline_sharpness is None:
+        return QualityResult(
+            True,
+            combined,
+            None,
+            f"baseline nitidezza {combined:.2f}",
+        )
+
+    threshold = baseline_sharpness * max(0.05, min(1.0, float(ratio)))
+    if combined < threshold:
+        return QualityResult(
+            False,
+            combined,
+            threshold,
+            f"nitidezza {combined:.2f} sotto soglia {threshold:.2f}",
+        )
+
+    return QualityResult(
+        True,
+        combined,
+        threshold,
+        f"nitidezza {combined:.2f} (soglia {threshold:.2f})",
+    )
