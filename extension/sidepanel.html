@@ -17,8 +17,12 @@
       <p class="muted">Cattura ciò che è visibile nella scheda corrente e crea un PDF locale.</p>
 
       <label>Pagine da acquisire
-        <input id="pages" type="number" min="1" value="10">
+        <div class="page-count-row">
+          <input id="pages" type="number" min="1" value="10">
+          <label class="check all-pages-check"><input id="allPages" type="checkbox"> Tutte</label>
+        </div>
       </label>
+      <p class="help">Con <strong>Tutte</strong> l'acquisizione continua finché il comando “pagina successiva” non è più disponibile; quindi passa automaticamente a OCR/PDF.</p>
 
       <div class="buttons">
         <button id="selectRegion">1. Seleziona area pagina</button>
