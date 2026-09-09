@@ -58,29 +58,60 @@
       </div>
 
       <div class="settingsbox">
-        <h3>Acquisizione</h3>
+        <h3>Acquisizione e rendering</h3>
 
-        <label>Attesa dopo il cambio pagina (s)
+        <label>Attesa minima dopo il cambio pagina (s)
           <input id="delay" type="number" min="0.2" step="0.1" value="1.5">
         </label>
-        <p class="help">Tempo lasciato al viewer per iniziare e completare il caricamento dopo il click su “pagina successiva”.</p>
+        <p class="help">Attesa minima prima di iniziare a verificare che la nuova pagina sia cambiata e abbia terminato il rendering.</p>
 
-        <label>Attesa tra i tentativi sulla stessa pagina (s)
+        <label>Tempo massimo di attesa rendering (s)
+          <input id="renderMaxWait" type="number" min="2" max="60" step="1" value="12">
+        </label>
+        <p class="help">Se la pagina è cambiata ma non raggiunge tutti i criteri di stabilità entro questo tempo, viene comunque acquisito l'ultimo frame disponibile con un avviso nel log.</p>
+
+        <label>Intervallo controllo stabilità (s)
+          <input id="stabilityInterval" type="number" min="0.2" max="3" step="0.1" value="0.4">
+        </label>
+
+        <label>Conferme visive consecutive
+          <input id="stableSamples" type="number" min="1" max="8" step="1" value="2">
+        </label>
+        <p class="help">La pagina è visivamente stabile quando questo numero di confronti consecutivi tra frame resta sotto la soglia indicata.</p>
+
+        <label>Soglia stabilità visiva (%)
+          <input id="stabilityThresholdPct" type="number" min="0.01" max="5" step="0.01" value="0.15">
+        </label>
+        <p class="help">Differenza media massima tra due frame perché siano considerati uguali. Valori più bassi richiedono una stabilità maggiore.</p>
+
+        <label>Soglia cambio pagina (%)
+          <input id="pageChangeThresholdPct" type="number" min="0.01" max="10" step="0.01" value="0.20">
+        </label>
+        <p class="help">Differenza minima rispetto alla pagina precedente per considerare avvenuto il cambio pagina.</p>
+
+        <label class="check"><input id="useDomSignals" type="checkbox" checked> usa anche i segnali DOM di fine caricamento</label>
+        <p class="help">Controlla <code>document.readyState</code>, font, immagini non ancora complete, elementi visibili con stato/loading e assenza di mutazioni DOM nell'area acquisita.</p>
+
+        <label>Quiete minima DOM (ms)
+          <input id="domIdleMs" type="number" min="100" max="5000" step="100" value="500">
+        </label>
+
+        <label>Attesa prima di riprovare il click pagina (s)
           <input id="retryDelay" type="number" min="0.5" step="0.1" value="2.0">
         </label>
-        <p class="help">Se una pagina risulta duplicata, poco nitida o non ancora caricata, Ebook2PDF attende questo intervallo prima di ricontrollarla.</p>
+        <p class="help">Usata solo se il contenuto non cambia realmente dopo il comando “pagina successiva”.</p>
 
-        <label>Tentativi massimi per pagina
+        <label>Tentativi massimi di cambio pagina
           <input id="attempts" type="number" min="1" max="20" value="5">
         </label>
 
         <label>Ratio minimo di nitidezza rispetto alla baseline
           <input id="sharpnessRatio" type="number" min="0.05" max="1" step="0.05" value="0.50">
         </label>
-        <p class="help warning"><strong>Predefinito: 0,50 (50%).</strong> La prima pagina valida definisce la baseline. Le successive devono avere una nitidezza almeno pari a <em>baseline × ratio</em>. Un ratio troppo alto può scartare pagine valide meno nitide della prima; un ratio troppo basso può accettare una pagina mentre il viewer la sta ancora caricando, quindi sfocata o incompleta.</p>
+        <p class="help"><strong>Predefinito: 0,50 (50%).</strong> La nitidezza è ora un controllo diagnostico secondario: una pagina stabilizzata non viene saltata solo perché è meno nitida della baseline.</p>
 
-        <label class="check"><input id="checkDuplicates" type="checkbox" checked> controlla pagine duplicate</label>
-        <label class="check"><input id="checkQuality" type="checkbox" checked> controlla caricamento e nitidezza</label>
+        <label class="check"><input id="checkDuplicates" type="checkbox" checked> verifica che la pagina sia realmente cambiata</label>
+        <label class="check"><input id="checkQuality" type="checkbox" checked> misura nitidezza e qualità a scopo diagnostico</label>
       </div>
 
       <div class="settingsbox">
