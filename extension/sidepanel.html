@@ -8,66 +8,99 @@
 </head>
 <body>
   <main>
-    <h1>📚 Ebook2PDF</h1>
-    <p class="muted">Cattura ciò che è visibile nella scheda corrente e crea un PDF locale.</p>
+    <header class="topbar">
+      <h1>📚 Ebook2PDF</h1>
+      <button id="settingsButton" class="iconbutton" type="button" title="Impostazioni" aria-label="Impostazioni">⚙️</button>
+    </header>
 
-    <label>Pagine da acquisire
-      <input id="pages" type="number" min="1" value="10">
-    </label>
+    <section id="mainView">
+      <p class="muted">Cattura ciò che è visibile nella scheda corrente e crea un PDF locale.</p>
 
-    <label>Attesa dopo il cambio pagina (s)
-      <input id="delay" type="number" min="0.2" step="0.1" value="1.5">
-    </label>
-
-    <label>Tentativi per pagina
-      <input id="attempts" type="number" min="1" max="20" value="5">
-    </label>
-
-    <label>Soglia nitidezza rispetto alla baseline
-      <input id="sharpness" type="number" min="0.1" max="1" step="0.05" value="0.70">
-    </label>
-
-    <div class="buttons">
-      <button id="selectRegion">1. Seleziona area pagina</button>
-      <button id="selectNext">2. Seleziona pulsante avanti</button>
-    </div>
-
-    <div class="statusbox">
-      <div><strong>Area:</strong> <span id="regionStatus">non selezionata</span></div>
-      <div><strong>Avanti:</strong> <span id="nextStatus">non selezionato</span></div>
-    </div>
-
-    <label class="check"><input id="checkDuplicates" type="checkbox" checked> controlla pagine duplicate</label>
-    <label class="check"><input id="checkQuality" type="checkbox" checked> controlla caricamento/nitidezza</label>
-    <label class="check"><input id="enableOcr" type="checkbox"> crea PDF ricercabile con OCR locale</label>
-
-    <section id="ocrOptions" class="ocrbox hidden">
-      <label>Lingua OCR
-        <select id="ocrLanguage">
-          <option value="ita+eng" selected>Italiano + Inglese</option>
-          <option value="ita">Italiano</option>
-          <option value="eng">Inglese</option>
-        </select>
+      <label>Pagine da acquisire
+        <input id="pages" type="number" min="1" value="10">
       </label>
-      <p class="muted compact">Tesseract.js viene eseguito localmente. Nessuna pagina viene inviata a servizi esterni.</p>
+
+      <div class="buttons">
+        <button id="selectRegion">1. Seleziona area pagina</button>
+        <button id="selectNext">2. Seleziona pulsante avanti</button>
+      </div>
+
+      <div class="statusbox">
+        <div><strong>Area:</strong> <span id="regionStatus">non selezionata</span></div>
+        <div><strong>Avanti:</strong> <span id="nextStatus">non selezionato</span></div>
+      </div>
+
+      <label class="check"><input id="enableOcr" type="checkbox"> crea PDF ricercabile con OCR locale</label>
+      <p id="ocrLanguageSummary" class="muted compact">Lingua OCR: Italiano + Inglese</p>
+
+      <div class="buttons">
+        <button id="start" class="primary">▶ Avvia acquisizione</button>
+        <button id="stop" disabled>■ Ferma</button>
+      </div>
+
+      <div id="stepText" class="step">Pronto.</div>
+      <progress id="progress" value="0" max="1"></progress>
+      <div id="progressText">Pronto.</div>
+
+      <section id="ocrProgressBox" class="ocrprogress hidden">
+        <div><strong>OCR</strong></div>
+        <progress id="ocrProgress" value="0" max="1"></progress>
+        <div id="ocrProgressText">In attesa.</div>
+      </section>
+
+      <pre id="log"></pre>
     </section>
 
-    <div class="buttons">
-      <button id="start" class="primary">▶ Avvia acquisizione</button>
-      <button id="stop" disabled>■ Ferma</button>
-    </div>
+    <section id="settingsView" class="hidden">
+      <div class="settings-title-row">
+        <h2>⚙️ Impostazioni</h2>
+        <button id="closeSettings" class="secondary small" type="button">← Torna</button>
+      </div>
 
-    <div id="stepText" class="step">Pronto.</div>
-    <progress id="progress" value="0" max="1"></progress>
-    <div id="progressText">Pronto.</div>
+      <div class="settingsbox">
+        <h3>Acquisizione</h3>
 
-    <section id="ocrProgressBox" class="ocrprogress hidden">
-      <div><strong>OCR</strong></div>
-      <progress id="ocrProgress" value="0" max="1"></progress>
-      <div id="ocrProgressText">In attesa.</div>
+        <label>Attesa dopo il cambio pagina (s)
+          <input id="delay" type="number" min="0.2" step="0.1" value="1.5">
+        </label>
+        <p class="help">Tempo lasciato al viewer per iniziare e completare il caricamento dopo il click su “pagina successiva”.</p>
+
+        <label>Attesa tra i tentativi sulla stessa pagina (s)
+          <input id="retryDelay" type="number" min="0.5" step="0.1" value="2.0">
+        </label>
+        <p class="help">Se una pagina risulta duplicata, poco nitida o non ancora caricata, Ebook2PDF attende questo intervallo prima di ricontrollarla.</p>
+
+        <label>Tentativi massimi per pagina
+          <input id="attempts" type="number" min="1" max="20" value="5">
+        </label>
+
+        <label>Soglia minima di nitidezza
+          <input id="sharpness" type="number" min="0" max="100" step="0.1" value="7.5">
+        </label>
+        <p class="help warning"><strong>Predefinita: 7,5.</strong> Una soglia troppo alta può scartare pagine correttamente caricate ma graficamente poco contrastate. Una soglia troppo bassa può invece accettare una pagina mentre il viewer la sta ancora caricando, quindi sfocata o incompleta.</p>
+
+        <label class="check"><input id="checkDuplicates" type="checkbox" checked> controlla pagine duplicate</label>
+        <label class="check"><input id="checkQuality" type="checkbox" checked> controlla caricamento e nitidezza</label>
+      </div>
+
+      <div class="settingsbox">
+        <h3>OCR</h3>
+        <label>Lingua OCR
+          <select id="ocrLanguage">
+            <option value="ita+eng" selected>Italiano + Inglese</option>
+            <option value="ita">Italiano</option>
+            <option value="eng">Inglese</option>
+          </select>
+        </label>
+        <p class="help">Tesseract.js viene eseguito localmente. Nessuna pagina viene inviata a servizi esterni.</p>
+      </div>
+
+      <div class="buttons">
+        <button id="saveSettings" class="primary" type="button">Salva impostazioni</button>
+        <button id="resetSettings" type="button">Ripristina predefinite</button>
+      </div>
+      <div id="settingsStatus" class="muted compact"></div>
     </section>
-
-    <pre id="log"></pre>
   </main>
   <script src="ocr.js"></script>
   <script src="sidepanel.js"></script>
