@@ -21,178 +21,12 @@
         }
       };
       script.onerror = () => reject(new Error(
-        "Asset OCR non trovati. Aggiungi Tesseract.js in extension/lib/tesseract/ e consulta OCR_ASSETS.md."
+        "Asset OCR non trovati. Riesegui lo script di installazione degli asset e ricarica l'estensione."
       ));
       document.head.appendChild(script);
     });
 
     return tesseractLoadPromise;
-  }
-
-  function normalizeBbox(bbox) {
-    if (!bbox) return null;
-    const x0 = Number(bbox.x0);
-    const y0 = Number(bbox.y0);
-    const x1 = Number(bbox.x1);
-    const y1 = Number(bbox.y1);
-    if (![x0, y0, x1, y1].every(Number.isFinite)) return null;
-    if (x1 <= x0 || y1 <= y0) return null;
-    return { x0, y0, x1, y1 };
-  }
-
-  function unionBboxes(items) {
-    const boxes = items.map(item => normalizeBbox(item?.bbox)).filter(Boolean);
-    if (!boxes.length) return null;
-    return {
-      x0: Math.min(...boxes.map(box => box.x0)),
-      y0: Math.min(...boxes.map(box => box.y0)),
-      x1: Math.max(...boxes.map(box => box.x1)),
-      y1: Math.max(...boxes.map(box => box.y1))
-    };
-  }
-
-  function normalizeWord(word) {
-    const text = String(word?.text || "").trim();
-    const bbox = normalizeBbox(word?.bbox);
-    if (!text || !bbox) return null;
-    return {
-      text,
-      bbox,
-      confidence: Number.isFinite(Number(word?.confidence)) ? Number(word.confidence) : null
-    };
-  }
-
-  function cleanLineText(text) {
-    return String(text || "")
-      .replace(/[\r\n\t]+/g, " ")
-      .replace(/^\s+|\s+$/g, "");
-  }
-
-  function textFromWords(words) {
-    return words.map(word => word.text).join(" ").trim();
-  }
-
-  function normalizeLine(line, blockIndex, paragraphIndex, lineIndex) {
-    const words = (line?.words || []).map(normalizeWord).filter(Boolean);
-    const bbox = normalizeBbox(line?.bbox) || unionBboxes(words);
-    const text = cleanLineText(line?.text) || textFromWords(words);
-    if (!text || !bbox) return null;
-    return {
-      text,
-      bbox,
-      words,
-      confidence: Number.isFinite(Number(line?.confidence)) ? Number(line.confidence) : null,
-      blockIndex,
-      paragraphIndex,
-      lineIndex
-    };
-  }
-
-  function verticalOverlapRatio(a, b) {
-    const top = Math.max(a.y0, b.y0);
-    const bottom = Math.min(a.y1, b.y1);
-    const overlap = Math.max(0, bottom - top);
-    const minHeight = Math.max(1, Math.min(a.y1 - a.y0, b.y1 - b.y0));
-    return overlap / minHeight;
-  }
-
-  function joinFragments(left, right) {
-    const a = cleanLineText(left);
-    const b = cleanLineText(right);
-    if (!a) return b;
-    if (!b) return a;
-    if (/[-–—/]$/.test(a) || /^[,.;:!?%\)\]\}]/.test(b)) return `${a}${b}`;
-    return `${a} ${b}`;
-  }
-
-  function mergeSameRowFragments(lines) {
-    const sorted = [...lines].sort((a, b) => {
-      const dy = a.bbox.y0 - b.bbox.y0;
-      return Math.abs(dy) > 2 ? dy : a.bbox.x0 - b.bbox.x0;
-    });
-    const merged = [];
-
-    for (const line of sorted) {
-      const previous = merged[merged.length - 1];
-      const sameContainer = previous &&
-        previous.blockIndex === line.blockIndex &&
-        previous.paragraphIndex === line.paragraphIndex;
-      const sameRow = sameContainer && verticalOverlapRatio(previous.bbox, line.bbox) >= 0.60;
-
-      if (!sameRow) {
-        merged.push({ ...line, words: [...line.words] });
-        continue;
-      }
-
-      const fragments = [previous, line].sort((a, b) => a.bbox.x0 - b.bbox.x0);
-      previous.text = joinFragments(fragments[0].text, fragments[1].text);
-      previous.words = [...previous.words, ...line.words].sort((a, b) => a.bbox.x0 - b.bbox.x0);
-      previous.bbox = unionBboxes([previous, line]);
-      if (previous.confidence != null && line.confidence != null) {
-        previous.confidence = (previous.confidence + line.confidence) / 2;
-      }
-    }
-
-    return merged;
-  }
-
-  function extractLayout(data) {
-    const blocksOut = [];
-    const paragraphsOut = [];
-    const linesOut = [];
-    const wordsOut = [];
-    const sourceBlocks = Array.isArray(data?.blocks) ? data.blocks : [];
-
-    sourceBlocks.forEach((block, blockIndex) => {
-      const blockOut = {
-        bbox: normalizeBbox(block?.bbox),
-        text: cleanLineText(block?.text),
-        paragraphs: []
-      };
-
-      for (const [paragraphIndex, paragraph] of (block?.paragraphs || []).entries()) {
-        const rawLines = (paragraph?.lines || [])
-          .map((line, lineIndex) => normalizeLine(line, blockIndex, paragraphIndex, lineIndex))
-          .filter(Boolean);
-        const lines = mergeSameRowFragments(rawLines);
-
-        const paragraphOut = {
-          bbox: normalizeBbox(paragraph?.bbox) || unionBboxes(lines),
-          text: cleanLineText(paragraph?.text) || lines.map(line => line.text).join("\n"),
-          lines
-        };
-
-        blockOut.paragraphs.push(paragraphOut);
-        paragraphsOut.push(paragraphOut);
-        linesOut.push(...lines);
-        for (const line of lines) wordsOut.push(...line.words);
-      }
-
-      if (blockOut.paragraphs.length) blocksOut.push(blockOut);
-    });
-
-    // Fallback per output Tesseract privi di blocks.
-    if (!linesOut.length && Array.isArray(data?.lines)) {
-      const lines = mergeSameRowFragments(
-        data.lines.map((line, index) => normalizeLine(line, 0, 0, index)).filter(Boolean)
-      );
-      linesOut.push(...lines);
-      for (const line of lines) wordsOut.push(...line.words);
-    }
-
-    if (!wordsOut.length && Array.isArray(data?.words)) {
-      for (const word of data.words) {
-        const normalized = normalizeWord(word);
-        if (normalized) wordsOut.push(normalized);
-      }
-    }
-
-    return {
-      blocks: blocksOut,
-      paragraphs: paragraphsOut,
-      lines: linesOut,
-      words: wordsOut
-    };
   }
 
   function normalizeLanguages(language) {
@@ -208,6 +42,12 @@
     return ["3", "4", "6", "11"].includes(psm) ? psm : "3";
   }
 
+  function normalizeScale(value) {
+    const scale = Number(value);
+    if (!Number.isFinite(scale)) return 2;
+    return Math.min(3, Math.max(1, scale));
+  }
+
   async function verifyLocalAsset(path, label) {
     const url = extensionUrl(path);
     try {
@@ -219,11 +59,46 @@
     }
   }
 
+  async function prepareOcrImage(page, scale) {
+    const source = new Blob([page.jpeg], { type: "image/jpeg" });
+    if (scale <= 1.01) return source;
+
+    const bitmap = await createImageBitmap(source);
+    const width = Math.max(1, Math.round(page.width * scale));
+    const height = Math.max(1, Math.round(page.height * scale));
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+
+    // L'upscale serve soltanto al motore OCR. Il PDF finale riutilizza il JPEG originale.
+    return canvas.convertToBlob({ type: "image/png" });
+  }
+
+  function pageBaseDpi(page) {
+    // Mantiene la stessa scala fisica del precedente PDF: lato massimo <= 842 pt.
+    const maxPixels = Math.max(1, Number(page.width) || 1, Number(page.height) || 1);
+    return Math.max(70, (maxPixels * 72) / 842);
+  }
+
+  function normalizePdfBytes(pdf) {
+    if (pdf instanceof Uint8Array) return pdf;
+    if (pdf instanceof ArrayBuffer) return new Uint8Array(pdf);
+    if (ArrayBuffer.isView(pdf)) {
+      return new Uint8Array(pdf.buffer, pdf.byteOffset, pdf.byteLength);
+    }
+    if (Array.isArray(pdf)) return Uint8Array.from(pdf);
+    return null;
+  }
+
   async function recognizePages(pages, options = {}) {
     const {
       language = "ita+eng",
       pageSegMode = "3",
       preserveInterwordSpaces = true,
+      scale = 2,
       onProgress = () => {},
       shouldStop = () => false
     } = options;
@@ -231,6 +106,7 @@
     const Tesseract = await loadTesseractApi();
     const languages = normalizeLanguages(language);
     const psm = normalizePsm(pageSegMode);
+    const ocrScale = normalizeScale(scale);
     let currentPage = 0;
     let worker = null;
 
@@ -271,34 +147,50 @@
       for (let index = 0; index < pages.length; index++) {
         if (shouldStop()) break;
         currentPage = index;
+        const page = pages[index];
 
         onProgress({
           phase: "page-start",
           pageIndex: index,
           totalPages: pages.length,
-          status: `Avvio riconoscimento (PSM ${psm})`,
+          status: `Preparazione OCR ${ocrScale.toFixed(1)}× (PSM ${psm})`,
           progress: 0
         });
 
-        const imageBlob = new Blob([pages[index].jpeg], { type: "image/jpeg" });
-        const result = await worker.recognize(imageBlob, {}, { blocks: true });
-        const layout = extractLayout(result?.data);
+        const imageBlob = await prepareOcrImage(page, ocrScale);
+        const dpi = Math.round(pageBaseDpi(page) * ocrScale);
+        await worker.setParameters({ user_defined_dpi: String(dpi) });
 
-        pages[index].ocr = {
-          text: String(result?.data?.text || ""),
-          blocks: layout.blocks,
-          paragraphs: layout.paragraphs,
-          lines: layout.lines,
-          words: layout.words,
+        const result = await worker.recognize(
+          imageBlob,
+          {
+            pdfTitle: `Ebook2PDF - pagina ${index + 1}`,
+            pdfTextOnly: true
+          },
+          { pdf: true }
+        );
+
+        const pdfBytes = normalizePdfBytes(result?.data?.pdf);
+        if (!pdfBytes?.length) {
+          throw new Error(`Tesseract non ha prodotto il PDF text-only per la pagina ${index + 1}.`);
+        }
+
+        page.ocrPdf = pdfBytes;
+        page.ocrText = String(result?.data?.text || "");
+        page.ocr = {
+          text: page.ocrText,
           psm,
-          preserveInterwordSpaces: !!preserveInterwordSpaces
+          preserveInterwordSpaces: !!preserveInterwordSpaces,
+          scale: ocrScale,
+          dpi
         };
 
+        const chars = page.ocrText.trim().length;
         onProgress({
           phase: "page-done",
           pageIndex: index,
           totalPages: pages.length,
-          status: `${layout.lines.length} righe, ${layout.words.length} parole`,
+          status: `${chars} caratteri riconosciuti`,
           progress: 1
         });
       }
