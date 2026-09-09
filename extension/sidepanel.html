@@ -9,12 +9,21 @@
 <body>
   <main>
     <header class="topbar">
-      <h1>📚 Ebook2PDF</h1>
+      <div class="brand">
+        <img class="brand-icon" src="icons/icon48.png" alt="" width="42" height="42">
+        <div class="brand-copy">
+          <div class="brand-title-row">
+            <h1>Ebook2PDF</h1>
+            <span id="appVersion" class="version-badge"></span>
+          </div>
+          <div class="brand-tagline">Capture · PDF · OCR locale</div>
+        </div>
+      </div>
       <button id="settingsButton" class="iconbutton" type="button" title="Impostazioni" aria-label="Impostazioni">⚙️</button>
     </header>
 
     <section id="mainView">
-      <p class="muted">Cattura ciò che è visibile nella scheda corrente e crea un PDF locale.</p>
+      <p id="appDescription" class="intro">Cattura le pagine visibili del documento, attende il completamento del rendering e crea un PDF locale con OCR opzionale.</p>
 
       <label>Pagine da acquisire
         <div class="page-count-row">
@@ -34,7 +43,7 @@
         <div><strong>Avanti:</strong> <span id="nextStatus">non selezionato</span></div>
       </div>
 
-      <label class="check"><input id="enableOcr" type="checkbox"> crea PDF ricercabile con OCR locale</label>
+      <label class="check ocr-toggle"><input id="enableOcr" type="checkbox"> crea PDF ricercabile con OCR locale</label>
       <p id="ocrLanguageSummary" class="muted compact">Lingua OCR: Italiano + Inglese</p>
 
       <div class="buttons">
@@ -161,10 +170,19 @@
       </div>
       <div id="settingsStatus" class="muted compact"></div>
     </section>
+
+    <footer class="app-footer">
+      <div class="footer-author">
+        <strong>Prof. Adriani</strong>
+        <span>Ebook2PDF · uso locale</span>
+      </div>
+      <a class="repo-link" href="https://github.com/il-prof-f-a/ebook2pdf-python" target="_blank" rel="noopener noreferrer" title="Apri il repository GitHub">GitHub ↗</a>
+    </footer>
   </main>
   <script src="ocr.js"></script>
   <script src="native-pdf.js"></script>
   <script src="sidepanel.js"></script>
   <script src="acquisition-end-fallback.js"></script>
+  <script src="branding.js"></script>
 </body>
 </html>
