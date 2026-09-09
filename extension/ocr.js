@@ -79,6 +79,17 @@
       .filter(Boolean);
   }
 
+  async function verifyLocalAsset(path, label) {
+    const url = extensionUrl(path);
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return url;
+    } catch (error) {
+      throw new Error(`${label} non disponibile (${path}): ${error?.message || error}`);
+    }
+  }
+
   async function recognizePages(pages, options = {}) {
     const {
       language = "ita+eng",
@@ -91,11 +102,20 @@
     let currentPage = 0;
     let worker = null;
 
+    const workerPath = await verifyLocalAsset("lib/tesseract/worker.min.js", "Worker Tesseract");
+    const corePath = extensionUrl("lib/tesseract-core");
+    const langPath = extensionUrl("tessdata");
+
+    for (const lang of languages) {
+      await verifyLocalAsset(`tessdata/${lang}.traineddata.gz`, `Modello OCR ${lang}`);
+    }
+
     try {
       worker = await Tesseract.createWorker(languages, 1, {
-        workerPath: extensionUrl("lib/tesseract/worker.min.js"),
-        corePath: extensionUrl("lib/tesseract-core/"),
-        langPath: extensionUrl("tessdata/"),
+        workerPath,
+        corePath,
+        langPath,
+        workerBlobURL: false,
         logger: message => {
           const progress = Number.isFinite(Number(message?.progress)) ? Number(message.progress) : 0;
           onProgress({
@@ -105,6 +125,9 @@
             status: String(message?.status || "OCR"),
             progress: Math.min(1, Math.max(0, progress))
           });
+        },
+        errorHandler: error => {
+          console.error("Ebook2PDF Tesseract worker error:", error);
         }
       });
 
