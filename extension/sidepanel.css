@@ -30,6 +30,21 @@ select {
   background: white;
 }
 .check { font-weight: 400; }
+.page-count-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.page-count-row > input[type="number"] { margin-top: 5px; }
+.all-pages-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 5px 0 0;
+  padding: 8px 4px;
+  white-space: nowrap;
+}
 .buttons { display: grid; gap: 8px; margin: 12px 0; }
 button {
   padding: 9px 10px;
