@@ -7,8 +7,11 @@ body {
 main { padding: 16px; }
 h1 { margin: 0 0 6px; font-size: 22px; }
 .muted { color: #656d76; margin-top: 0; }
+.compact { margin: 6px 0 0; font-size: 12px; }
+.hidden { display: none; }
 label { display: block; margin: 12px 0; font-weight: 600; }
-input[type="number"] {
+input[type="number"],
+select {
   width: 100%;
   box-sizing: border-box;
   margin-top: 5px;
@@ -28,15 +31,23 @@ button {
 }
 button.primary { background: #1f6feb; color: white; border-color: #1f6feb; }
 button:disabled { opacity: .55; cursor: default; }
-.statusbox {
+.statusbox,
+.ocrbox,
+.ocrprogress {
   background: white;
   border: 1px solid #d8dee4;
   border-radius: 7px;
   padding: 10px;
   margin: 12px 0;
 }
+.ocrbox label { margin: 0; }
+.step {
+  margin-top: 10px;
+  font-weight: 700;
+}
 progress { width: 100%; margin-top: 10px; }
-#progressText { margin-top: 5px; }
+#progressText,
+#ocrProgressText { margin-top: 5px; }
 #log {
   min-height: 120px;
   max-height: 260px;
