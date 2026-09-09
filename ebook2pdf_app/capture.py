@@ -48,7 +48,11 @@ class QualityResult:
 
 
 def capture_region(region: CaptureRegion) -> Image.Image:
-    image = ImageGrab.grab(bbox=region.bbox, all_screens=True)
+    try:
+        image = ImageGrab.grab(bbox=region.bbox, all_screens=True)
+    except TypeError:
+        # all_screens è specifico di alcune piattaforme/versioni Pillow.
+        image = ImageGrab.grab(bbox=region.bbox)
     return image.convert("RGB")
 
 
