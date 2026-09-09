@@ -40,35 +40,159 @@
     return { x0, y0, x1, y1 };
   }
 
-  function flattenWords(data) {
-    const output = [];
-
-    const pushWord = word => {
-      const text = String(word?.text || "").trim();
-      const bbox = normalizeBbox(word?.bbox);
-      if (!text || !bbox) return;
-      output.push({
-        text,
-        bbox,
-        confidence: Number.isFinite(Number(word?.confidence)) ? Number(word.confidence) : null
-      });
+  function unionBboxes(items) {
+    const boxes = items.map(item => normalizeBbox(item?.bbox)).filter(Boolean);
+    if (!boxes.length) return null;
+    return {
+      x0: Math.min(...boxes.map(box => box.x0)),
+      y0: Math.min(...boxes.map(box => box.y0)),
+      x1: Math.max(...boxes.map(box => box.x1)),
+      y1: Math.max(...boxes.map(box => box.y1))
     };
+  }
 
-    if (Array.isArray(data?.words)) {
-      data.words.forEach(pushWord);
-      if (output.length) return output;
-    }
+  function normalizeWord(word) {
+    const text = String(word?.text || "").trim();
+    const bbox = normalizeBbox(word?.bbox);
+    if (!text || !bbox) return null;
+    return {
+      text,
+      bbox,
+      confidence: Number.isFinite(Number(word?.confidence)) ? Number(word.confidence) : null
+    };
+  }
 
-    const blocks = Array.isArray(data?.blocks) ? data.blocks : [];
-    for (const block of blocks) {
-      for (const paragraph of block?.paragraphs || []) {
-        for (const line of paragraph?.lines || []) {
-          for (const word of line?.words || []) pushWord(word);
-        }
+  function cleanLineText(text) {
+    return String(text || "")
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/^\s+|\s+$/g, "");
+  }
+
+  function textFromWords(words) {
+    return words.map(word => word.text).join(" ").trim();
+  }
+
+  function normalizeLine(line, blockIndex, paragraphIndex, lineIndex) {
+    const words = (line?.words || []).map(normalizeWord).filter(Boolean);
+    const bbox = normalizeBbox(line?.bbox) || unionBboxes(words);
+    const text = cleanLineText(line?.text) || textFromWords(words);
+    if (!text || !bbox) return null;
+    return {
+      text,
+      bbox,
+      words,
+      confidence: Number.isFinite(Number(line?.confidence)) ? Number(line.confidence) : null,
+      blockIndex,
+      paragraphIndex,
+      lineIndex
+    };
+  }
+
+  function verticalOverlapRatio(a, b) {
+    const top = Math.max(a.y0, b.y0);
+    const bottom = Math.min(a.y1, b.y1);
+    const overlap = Math.max(0, bottom - top);
+    const minHeight = Math.max(1, Math.min(a.y1 - a.y0, b.y1 - b.y0));
+    return overlap / minHeight;
+  }
+
+  function joinFragments(left, right) {
+    const a = cleanLineText(left);
+    const b = cleanLineText(right);
+    if (!a) return b;
+    if (!b) return a;
+    if (/[-–—/]$/.test(a) || /^[,.;:!?%\)\]\}]/.test(b)) return `${a}${b}`;
+    return `${a} ${b}`;
+  }
+
+  function mergeSameRowFragments(lines) {
+    const sorted = [...lines].sort((a, b) => {
+      const dy = a.bbox.y0 - b.bbox.y0;
+      return Math.abs(dy) > 2 ? dy : a.bbox.x0 - b.bbox.x0;
+    });
+    const merged = [];
+
+    for (const line of sorted) {
+      const previous = merged[merged.length - 1];
+      const sameContainer = previous &&
+        previous.blockIndex === line.blockIndex &&
+        previous.paragraphIndex === line.paragraphIndex;
+      const sameRow = sameContainer && verticalOverlapRatio(previous.bbox, line.bbox) >= 0.60;
+
+      if (!sameRow) {
+        merged.push({ ...line, words: [...line.words] });
+        continue;
+      }
+
+      const fragments = [previous, line].sort((a, b) => a.bbox.x0 - b.bbox.x0);
+      previous.text = joinFragments(fragments[0].text, fragments[1].text);
+      previous.words = [...previous.words, ...line.words].sort((a, b) => a.bbox.x0 - b.bbox.x0);
+      previous.bbox = unionBboxes([previous, line]);
+      if (previous.confidence != null && line.confidence != null) {
+        previous.confidence = (previous.confidence + line.confidence) / 2;
       }
     }
 
-    return output;
+    return merged;
+  }
+
+  function extractLayout(data) {
+    const blocksOut = [];
+    const paragraphsOut = [];
+    const linesOut = [];
+    const wordsOut = [];
+    const sourceBlocks = Array.isArray(data?.blocks) ? data.blocks : [];
+
+    sourceBlocks.forEach((block, blockIndex) => {
+      const blockOut = {
+        bbox: normalizeBbox(block?.bbox),
+        text: cleanLineText(block?.text),
+        paragraphs: []
+      };
+
+      for (const [paragraphIndex, paragraph] of (block?.paragraphs || []).entries()) {
+        const rawLines = (paragraph?.lines || [])
+          .map((line, lineIndex) => normalizeLine(line, blockIndex, paragraphIndex, lineIndex))
+          .filter(Boolean);
+        const lines = mergeSameRowFragments(rawLines);
+
+        const paragraphOut = {
+          bbox: normalizeBbox(paragraph?.bbox) || unionBboxes(lines),
+          text: cleanLineText(paragraph?.text) || lines.map(line => line.text).join("\n"),
+          lines
+        };
+
+        blockOut.paragraphs.push(paragraphOut);
+        paragraphsOut.push(paragraphOut);
+        linesOut.push(...lines);
+        for (const line of lines) wordsOut.push(...line.words);
+      }
+
+      if (blockOut.paragraphs.length) blocksOut.push(blockOut);
+    });
+
+    // Fallback per output Tesseract privi di blocks.
+    if (!linesOut.length && Array.isArray(data?.lines)) {
+      const lines = mergeSameRowFragments(
+        data.lines.map((line, index) => normalizeLine(line, 0, 0, index)).filter(Boolean)
+      );
+      linesOut.push(...lines);
+      for (const line of lines) wordsOut.push(...line.words);
+    }
+
+    if (!wordsOut.length && Array.isArray(data?.words)) {
+      for (const word of data.words) {
+        const normalized = normalizeWord(word);
+        if (normalized) wordsOut.push(normalized);
+      }
+    }
+
+    return {
+      blocks: blocksOut,
+      paragraphs: paragraphsOut,
+      lines: linesOut,
+      words: wordsOut
+    };
   }
 
   function normalizeLanguages(language) {
@@ -77,6 +201,11 @@
       .split("+")
       .map(item => item.trim())
       .filter(Boolean);
+  }
+
+  function normalizePsm(value) {
+    const psm = String(value ?? "3");
+    return ["3", "4", "6", "11"].includes(psm) ? psm : "3";
   }
 
   async function verifyLocalAsset(path, label) {
@@ -93,12 +222,15 @@
   async function recognizePages(pages, options = {}) {
     const {
       language = "ita+eng",
+      pageSegMode = "3",
+      preserveInterwordSpaces = true,
       onProgress = () => {},
       shouldStop = () => false
     } = options;
 
     const Tesseract = await loadTesseractApi();
     const languages = normalizeLanguages(language);
+    const psm = normalizePsm(pageSegMode);
     let currentPage = 0;
     let worker = null;
 
@@ -131,6 +263,11 @@
         }
       });
 
+      await worker.setParameters({
+        tessedit_pageseg_mode: psm,
+        preserve_interword_spaces: preserveInterwordSpaces ? "1" : "0"
+      });
+
       for (let index = 0; index < pages.length; index++) {
         if (shouldStop()) break;
         currentPage = index;
@@ -139,24 +276,29 @@
           phase: "page-start",
           pageIndex: index,
           totalPages: pages.length,
-          status: "Avvio riconoscimento",
+          status: `Avvio riconoscimento (PSM ${psm})`,
           progress: 0
         });
 
         const imageBlob = new Blob([pages[index].jpeg], { type: "image/jpeg" });
         const result = await worker.recognize(imageBlob, {}, { blocks: true });
-        const words = flattenWords(result?.data);
+        const layout = extractLayout(result?.data);
 
         pages[index].ocr = {
           text: String(result?.data?.text || ""),
-          words
+          blocks: layout.blocks,
+          paragraphs: layout.paragraphs,
+          lines: layout.lines,
+          words: layout.words,
+          psm,
+          preserveInterwordSpaces: !!preserveInterwordSpaces
         };
 
         onProgress({
           phase: "page-done",
           pageIndex: index,
           totalPages: pages.length,
-          status: `${words.length} parole riconosciute`,
+          status: `${layout.lines.length} righe, ${layout.words.length} parole`,
           progress: 1
         });
       }
@@ -167,7 +309,7 @@
         try {
           await worker.terminate();
         } catch (_) {
-          // Niente da fare: il worker è già terminato o non è più raggiungibile.
+          // Il worker può essere già terminato o non più raggiungibile.
         }
       }
     }
