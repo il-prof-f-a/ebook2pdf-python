@@ -10,10 +10,13 @@ const DEFAULT_SETTINGS = Object.freeze({
   delay: 1.5,
   retryDelay: 2.0,
   attempts: 5,
-  sharpness: 7.5,
+  sharpnessRatio: 0.50,
   checkDuplicates: true,
   checkQuality: true,
-  ocrLanguage: "ita+eng"
+  ocrLanguage: "ita+eng",
+  ocrPsm: "3",
+  preserveInterwordSpaces: true,
+  ocrScale: 2.0
 });
 
 function log(message) {
@@ -32,34 +35,83 @@ function languageLabel(value) {
   return "Italiano + Inglese";
 }
 
+function normalizeRatio(value) {
+  const ratio = Number(value);
+  if (!Number.isFinite(ratio) || ratio <= 0 || ratio > 1) return DEFAULT_SETTINGS.sharpnessRatio;
+  return Math.min(1, Math.max(0.05, ratio));
+}
+
+function normalizePsm(value) {
+  const psm = String(value ?? DEFAULT_SETTINGS.ocrPsm);
+  return ["3", "4", "6", "11"].includes(psm) ? psm : DEFAULT_SETTINGS.ocrPsm;
+}
+
+function normalizeOcrScale(value) {
+  const scale = Number(value);
+  if (!Number.isFinite(scale)) return DEFAULT_SETTINGS.ocrScale;
+  return Math.min(3, Math.max(1, scale));
+}
+
+function normalizeSettings(settings) {
+  const source = settings || {};
+  let ratio = source.sharpnessRatio;
+  if (ratio == null) {
+    const legacy = Number(source.sharpness);
+    ratio = Number.isFinite(legacy) && legacy > 0 && legacy <= 1
+      ? legacy
+      : DEFAULT_SETTINGS.sharpnessRatio;
+  }
+
+  return {
+    delay: Math.max(0.2, Number(source.delay) || DEFAULT_SETTINGS.delay),
+    retryDelay: Math.max(0.5, Number(source.retryDelay) || DEFAULT_SETTINGS.retryDelay),
+    attempts: Math.min(20, Math.max(1, Number(source.attempts) || DEFAULT_SETTINGS.attempts)),
+    sharpnessRatio: normalizeRatio(ratio),
+    checkDuplicates: source.checkDuplicates !== false,
+    checkQuality: source.checkQuality !== false,
+    ocrLanguage: ["ita", "eng", "ita+eng"].includes(source.ocrLanguage) ? source.ocrLanguage : DEFAULT_SETTINGS.ocrLanguage,
+    ocrPsm: normalizePsm(source.ocrPsm),
+    preserveInterwordSpaces: source.preserveInterwordSpaces !== false,
+    ocrScale: normalizeOcrScale(source.ocrScale)
+  };
+}
+
 function applySettings(settings) {
-  const merged = { ...DEFAULT_SETTINGS, ...(settings || {}) };
+  const merged = normalizeSettings(settings);
   $("delay").value = merged.delay;
   $("retryDelay").value = merged.retryDelay;
   $("attempts").value = merged.attempts;
-  $("sharpness").value = merged.sharpness;
-  $("checkDuplicates").checked = !!merged.checkDuplicates;
-  $("checkQuality").checked = !!merged.checkQuality;
-  $("ocrLanguage").value = merged.ocrLanguage || "ita+eng";
-  $("ocrLanguageSummary").textContent = `Lingua OCR: ${languageLabel($("ocrLanguage").value)}`;
+  $("sharpnessRatio").value = merged.sharpnessRatio;
+  $("checkDuplicates").checked = merged.checkDuplicates;
+  $("checkQuality").checked = merged.checkQuality;
+  $("ocrLanguage").value = merged.ocrLanguage;
+  $("ocrPsm").value = merged.ocrPsm;
+  $("preserveInterwordSpaces").checked = merged.preserveInterwordSpaces;
+  $("ocrScale").value = merged.ocrScale;
+  $("ocrLanguageSummary").textContent = `Lingua OCR: ${languageLabel(merged.ocrLanguage)}`;
 }
 
 function settingsFromForm() {
-  return {
-    delay: Math.max(0.2, Number($("delay").value) || DEFAULT_SETTINGS.delay),
-    retryDelay: Math.max(0.5, Number($("retryDelay").value) || DEFAULT_SETTINGS.retryDelay),
-    attempts: Math.min(20, Math.max(1, Number($("attempts").value) || DEFAULT_SETTINGS.attempts)),
-    sharpness: Math.max(0, Number($("sharpness").value) || DEFAULT_SETTINGS.sharpness),
+  return normalizeSettings({
+    delay: $("delay").value,
+    retryDelay: $("retryDelay").value,
+    attempts: $("attempts").value,
+    sharpnessRatio: $("sharpnessRatio").value,
     checkDuplicates: $("checkDuplicates").checked,
     checkQuality: $("checkQuality").checked,
-    ocrLanguage: $("ocrLanguage").value || DEFAULT_SETTINGS.ocrLanguage
-  };
+    ocrLanguage: $("ocrLanguage").value,
+    ocrPsm: $("ocrPsm").value,
+    preserveInterwordSpaces: $("preserveInterwordSpaces").checked,
+    ocrScale: $("ocrScale").value
+  });
 }
 
 async function loadSettings() {
   try {
     const stored = await chrome.storage.local.get(SETTINGS_KEY);
-    applySettings(stored?.[SETTINGS_KEY]);
+    const settings = normalizeSettings(stored?.[SETTINGS_KEY]);
+    applySettings(settings);
+    await chrome.storage.local.set({ [SETTINGS_KEY]: settings });
   } catch (error) {
     applySettings(DEFAULT_SETTINGS);
     console.warn("Ebook2PDF: impossibile leggere le impostazioni", error);
@@ -164,7 +216,7 @@ function quadrantStats(imageData, x0, y0, width, height) {
   };
 }
 
-function validateImage(imageData, sharpnessThreshold) {
+function validateImage(imageData, baselineSharpness, ratio) {
   const halfW = Math.max(1, Math.floor(imageData.width / 2));
   const halfH = Math.max(1, Math.floor(imageData.height / 2));
   const tl = quadrantStats(imageData, 0, 0, halfW, halfH);
@@ -175,20 +227,31 @@ function validateImage(imageData, sharpnessThreshold) {
   }
 
   const sharpness = Math.min(tl.sharpness, br.sharpness);
-  const threshold = Math.max(0, Number(sharpnessThreshold) || 0);
+  const normalizedRatio = normalizeRatio(ratio);
 
+  if (baselineSharpness == null) {
+    return {
+      ok: true,
+      sharpness,
+      reason: `baseline nitidezza ${sharpness.toFixed(2)} (ratio ${normalizedRatio.toFixed(2)})`
+    };
+  }
+
+  const threshold = baselineSharpness * normalizedRatio;
   if (sharpness < threshold) {
     return {
       ok: false,
       type: "blurry",
       sharpness,
-      reason: `nitidezza ${sharpness.toFixed(2)} sotto soglia ${threshold.toFixed(2)}`
+      threshold,
+      reason: `nitidezza ${sharpness.toFixed(2)} sotto soglia ${threshold.toFixed(2)} (baseline ${baselineSharpness.toFixed(2)} × ratio ${normalizedRatio.toFixed(2)})`
     };
   }
 
   return {
     ok: true,
     sharpness,
+    threshold,
     reason: `nitidezza ${sharpness.toFixed(2)} (soglia ${threshold.toFixed(2)})`
   };
 }
@@ -225,77 +288,13 @@ function concatBytes(chunks) {
   return result;
 }
 
-function pdfLiteralWinAnsi(text) {
-  const replacements = new Map([
-    ["‘", "'"], ["’", "'"], ["‚", "'"],
-    ["“", "\""], ["”", "\""], ["„", "\""],
-    ["–", "-"], ["—", "-"], ["−", "-"],
-    ["…", "..."], [" ", " "]
-  ]);
-
-  let normalized = "";
-  for (const char of String(text || "")) normalized += replacements.get(char) ?? char;
-  normalized = normalized.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
-
-  let out = "";
-  for (const char of normalized) {
-    if (char === "\\" || char === "(" || char === ")") {
-      out += `\\${char}`;
-      continue;
-    }
-
-    const code = char.charCodeAt(0);
-    if (code >= 32 && code <= 126) {
-      out += char;
-    } else if (code >= 160 && code <= 255) {
-      out += `\\${code.toString(8).padStart(3, "0")}`;
-    } else {
-      out += "?";
-    }
-  }
-
-  return out;
-}
-
-function buildOcrCommands(page, widthPt, heightPt) {
-  const words = Array.isArray(page?.ocr?.words) ? page.ocr.words : [];
-  if (!words.length) return "";
-
-  const scaleX = widthPt / page.width;
-  const scaleY = heightPt / page.height;
-  const commands = [];
-
-  for (const word of words) {
-    const text = pdfLiteralWinAnsi(`${word.text} `);
-    const bbox = word?.bbox;
-    if (!text || !bbox) continue;
-
-    const boxWidth = Math.max(1, (bbox.x1 - bbox.x0) * scaleX);
-    const boxHeight = Math.max(1, (bbox.y1 - bbox.y0) * scaleY);
-    const fontSize = Math.min(72, Math.max(3, boxHeight * 0.90));
-    const x = Math.max(0, bbox.x0 * scaleX);
-    const y = Math.max(0, heightPt - (bbox.y1 * scaleY) + (fontSize * 0.08));
-    const estimatedWidth = Math.max(1, text.length * fontSize * 0.50);
-    const horizontalScale = Math.min(300, Math.max(20, (boxWidth / estimatedWidth) * 100));
-
-    commands.push(
-      `BT\n3 Tr\n/F1 ${fontSize.toFixed(2)} Tf\n${horizontalScale.toFixed(2)} Tz\n` +
-      `1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm\n(${text}) Tj\nET\n`
-    );
-  }
-
-  return commands.join("");
-}
-
-function buildPdf(pages) {
+function buildImagePdf(pages) {
   const objects = new Map();
   const kids = [];
-
   objects.set(1, encode("<< /Type /Catalog /Pages 2 0 R >>"));
-  objects.set(3, encode("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"));
 
   pages.forEach((page, index) => {
-    const pageObj = 4 + index * 3;
+    const pageObj = 3 + index * 3;
     const imageObj = pageObj + 1;
     const contentObj = pageObj + 2;
     kids.push(`${pageObj} 0 R`);
@@ -307,8 +306,7 @@ function buildPdf(pages) {
 
     objects.set(pageObj, encode(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${widthPt.toFixed(2)} ${heightPt.toFixed(2)}] ` +
-      `/Resources << /XObject << /Im0 ${imageObj} 0 R >> /Font << /F1 3 0 R >> >> ` +
-      `/Contents ${contentObj} 0 R >>`
+      `/Resources << /XObject << /Im0 ${imageObj} 0 R >> >> /Contents ${contentObj} 0 R >>`
     ));
 
     const imageHeader = encode(
@@ -317,9 +315,7 @@ function buildPdf(pages) {
     );
     objects.set(imageObj, concatBytes([imageHeader, page.jpeg, encode("\nendstream")]));
 
-    const imageCommands = `q\n${widthPt.toFixed(2)} 0 0 ${heightPt.toFixed(2)} 0 0 cm\n/Im0 Do\nQ\n`;
-    const ocrCommands = buildOcrCommands(page, widthPt, heightPt);
-    const content = encode(imageCommands + ocrCommands);
+    const content = encode(`q\n${widthPt.toFixed(2)} 0 0 ${heightPt.toFixed(2)} 0 0 cm\n/Im0 Do\nQ\n`);
     objects.set(contentObj, concatBytes([
       encode(`<< /Length ${content.length} >>\nstream\n`),
       content,
@@ -329,10 +325,14 @@ function buildPdf(pages) {
 
   objects.set(2, encode(`<< /Type /Pages /Count ${pages.length} /Kids [${kids.join(" ")}] >>`));
 
-  const maxObject = 3 + pages.length * 3;
-  const chunks = [encode("%PDF-1.4\n%âãÏÓ\n")];
+  const maxObject = 2 + pages.length * 3;
+  const header = new Uint8Array([
+    0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34, 0x0A,
+    0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A
+  ]);
+  const chunks = [header];
   const offsets = new Array(maxObject + 1).fill(0);
-  let cursor = chunks[0].length;
+  let cursor = header.length;
 
   for (let n = 1; n <= maxObject; n++) {
     const body = objects.get(n);
@@ -353,9 +353,8 @@ function buildPdf(pages) {
   return concatBytes(chunks);
 }
 
-async function downloadPdf(pages, searchable = false) {
-  const pdf = buildPdf(pages);
-  const blob = new Blob([pdf], { type: "application/pdf" });
+async function downloadBytes(pdfBytes, searchable) {
+  const blob = new Blob([pdfBytes], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const suffix = searchable ? "_ocr" : "";
@@ -368,6 +367,20 @@ async function downloadPdf(pages, searchable = false) {
   } finally {
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
+}
+
+async function downloadPdf(pages, searchable = false) {
+  if (searchable) {
+    if (!globalThis.Ebook2PdfNativePdf?.buildSearchablePdf) {
+      throw new Error("Modulo PDF OCR nativo non disponibile.");
+    }
+    const pdf = await globalThis.Ebook2PdfNativePdf.buildSearchablePdf(pages);
+    await downloadBytes(pdf, true);
+    return true;
+  }
+
+  await downloadBytes(buildImagePdf(pages), false);
+  return false;
 }
 
 function updateOcrProgress(message) {
@@ -383,7 +396,7 @@ function updateOcrProgress(message) {
     `Pagina ${Math.min(total, index + 1)}/${total} — ${message.status || "OCR"} — ${Math.round(globalProgress * 100)}%`;
 }
 
-async function runOcr(pages, language) {
+async function runOcr(pages, settings) {
   if (!globalThis.Ebook2PdfOcr?.recognizePages) {
     throw new Error("Modulo OCR non disponibile.");
   }
@@ -392,17 +405,29 @@ async function runOcr(pages, language) {
   $("ocrProgress").value = 0;
   $("ocrProgressText").textContent = "Inizializzazione Tesseract...";
   setStep("2/3 — OCR locale");
-  log(`Avvio OCR locale su ${pages.length} pagine (${language}).`);
+  log(
+    `Avvio OCR locale su ${pages.length} pagine ` +
+    `(${settings.ocrLanguage}, PSM ${settings.ocrPsm}, upscale ${settings.ocrScale.toFixed(1)}×).`
+  );
 
   await globalThis.Ebook2PdfOcr.recognizePages(pages, {
-    language,
+    language: settings.ocrLanguage,
+    pageSegMode: settings.ocrPsm,
+    preserveInterwordSpaces: settings.preserveInterwordSpaces,
+    scale: settings.ocrScale,
     shouldStop: () => stopRequested,
     onProgress: updateOcrProgress
   });
 
-  const recognizedPages = pages.filter(page => page?.ocr?.words?.length).length;
-  log(`OCR completato su ${recognizedPages}/${pages.length} pagine.`);
-  return recognizedPages > 0;
+  if (stopRequested) {
+    log("OCR interrotto: verrà creato il PDF normale con tutte le pagine acquisite.");
+    return false;
+  }
+
+  const completed = pages.filter(page => page?.ocrPdf instanceof Uint8Array && page.ocrPdf.length).length;
+  const chars = pages.reduce((sum, page) => sum + String(page?.ocrText || "").trim().length, 0);
+  log(`OCR completato su ${completed}/${pages.length} pagine (${chars} caratteri).`);
+  return completed === pages.length;
 }
 
 $("settingsButton").addEventListener("click", () => {
@@ -469,11 +494,9 @@ $("start").addEventListener("click", async () => {
   const delayMs = settings.delay * 1000;
   const retryDelayMs = settings.retryDelay * 1000;
   const maxAttempts = settings.attempts;
-  const sharpnessThreshold = settings.sharpness;
   const checkDuplicates = settings.checkDuplicates;
   const checkQuality = settings.checkQuality;
   const enableOcr = $("enableOcr").checked;
-  const ocrLanguage = settings.ocrLanguage;
 
   stopRequested = false;
   $("start").disabled = true;
@@ -483,11 +506,15 @@ $("start").addEventListener("click", async () => {
   $("log").textContent = "";
   $("ocrProgressBox").classList.add("hidden");
   setStep(enableOcr ? "1/3 — Acquisizione" : "1/2 — Acquisizione");
-  log(`Parametri: soglia nitidezza ${sharpnessThreshold.toFixed(2)}, retry ${settings.retryDelay.toFixed(1)}s, ${maxAttempts} tentativi.`);
+  log(
+    `Parametri: ratio nitidezza ${settings.sharpnessRatio.toFixed(2)}, ` +
+    `retry ${settings.retryDelay.toFixed(1)}s, ${maxAttempts} tentativi.`
+  );
 
   const pages = [];
   const skipped = [];
   let previousImageData = null;
+  let baselineSharpness = null;
   let searchablePdf = false;
 
   try {
@@ -512,7 +539,7 @@ $("start").addEventListener("click", async () => {
         }
 
         if (checkQuality) {
-          const validation = validateImage(capture.imageData, sharpnessThreshold);
+          const validation = validateImage(capture.imageData, baselineSharpness, settings.sharpnessRatio);
           lastReason = validation.reason;
           if (!validation.ok) {
             const edgePage = pageIndex === 0 || pageIndex === totalPages - 1;
@@ -521,6 +548,10 @@ $("start").addEventListener("click", async () => {
               continue;
             }
             log(`Pagina ${pageIndex + 1}: accettata pur sotto soglia perché iniziale/finale.`);
+          }
+          if (baselineSharpness == null && validation.sharpness != null) {
+            baselineSharpness = validation.sharpness;
+            log(`Baseline nitidezza impostata a ${baselineSharpness.toFixed(2)}.`);
           }
         }
 
@@ -554,21 +585,35 @@ $("start").addEventListener("click", async () => {
 
     if (enableOcr && !stopRequested) {
       try {
-        searchablePdf = await runOcr(pages, ocrLanguage);
+        searchablePdf = await runOcr(pages, settings);
       } catch (ocrError) {
         searchablePdf = false;
         log(`ERRORE OCR: ${ocrError?.message || ocrError}`);
-        log("Creo comunque il PDF acquisito, senza layer OCR.");
+        log("Creo comunque il PDF acquisito, senza OCR.");
       }
     } else if (enableOcr && stopRequested) {
       log("OCR saltato perché è stato richiesto l'arresto durante l'acquisizione.");
     }
 
     setStep(enableOcr ? "3/3 — Creazione PDF" : "2/2 — Creazione PDF");
-    log(`Creo PDF con ${pages.length} pagine${searchablePdf ? " e layer OCR" : ""}...`);
-    await downloadPdf(pages, searchablePdf);
-    log(searchablePdf
-      ? "PDF ricercabile generato e inviato al download."
+
+    let downloadedAsSearchable = false;
+    if (searchablePdf) {
+      try {
+        log("Compongo il PDF: immagine originale + layer text-only nativo di Tesseract...");
+        downloadedAsSearchable = await downloadPdf(pages, true);
+      } catch (pdfError) {
+        log(`ERRORE composizione PDF OCR: ${pdfError?.message || pdfError}`);
+        log("Fallback: creo il PDF normale con le immagini acquisite.");
+        await downloadPdf(pages, false);
+      }
+    } else {
+      log(`Creo PDF con ${pages.length} pagine...`);
+      await downloadPdf(pages, false);
+    }
+
+    log(downloadedAsSearchable
+      ? "PDF ricercabile con layer Tesseract nativo generato e inviato al download."
       : "PDF generato e inviato al download.");
     setStep("Completato.");
 
