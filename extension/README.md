@@ -1,94 +1,83 @@
-# 📚 Ebook2PDF Browser Extension
+# Ebook2PDF Browser Extension
 
-Estensione Chromium di Ebook2PDF.
+<p align="center">
+  <img src="icons/icon128.png" alt="Ebook2PDF" width="112">
+</p>
 
-L'estensione riproduce nel browser la logica dello script Python originale: selezione dell'area da catturare, avanzamento pagina, controlli di qualità e generazione di un PDF multipagina. La v0.5.0 include OCR locale con Tesseract.js e usa il renderer PDF nativo di Tesseract per il layer testuale.
+Estensione Chromium di **Ebook2PDF** per acquisire le pagine visibili di ebook e documenti web autorizzati, creare PDF locali e aggiungere OCR opzionale con Tesseract.js.
 
-> Usare esclusivamente con documenti per i quali si dispone del diritto o dell'autorizzazione alla copia. L'estensione non implementa funzioni di rimozione DRM, decifratura o accesso a contenuti non visibili all'utente.
+**Autore:** Prof. Adriani · [@il-prof-f-a](https://github.com/il-prof-f-a)  
+**Repository:** [il-prof-f-a/ebook2pdf-python](https://github.com/il-prof-f-a/ebook2pdf-python)
+
+Per la documentazione generale del progetto, compreso lo **script Python**, consulta il [`README.md`](../README.md) nella root del repository.
+
+> Usare esclusivamente con documenti per i quali si dispone del diritto o dell'autorizzazione alla copia. L'estensione non implementa rimozione DRM, decifratura o accesso a contenuti non visibili all'utente.
 
 ## Funzioni principali
 
-- Manifest V3;
-- pannello laterale persistente;
+- Manifest V3 e pannello laterale persistente;
+- icona e branding Ebook2PDF;
 - selezione grafica dell'area della pagina;
 - selezione del comando "pagina successiva" direttamente nel DOM;
-- iniezione automatica del content script quando necessario;
-- screenshot della scheda con `chrome.tabs.captureVisibleTab()`;
-- crop automatico tenendo conto della scala tra coordinate CSS e screenshot reale;
-- rilevamento pagine duplicate;
-- controllo aree quasi monocolore;
-- controllo nitidezza relativo alla baseline della prima pagina valida;
-- ratio nitidezza configurabile;
-- ritardo tra cambio pagina e retry configurabili;
-- elenco pagine saltate e stop manuale;
-- OCR locale opzionale con Tesseract.js;
+- supporto a pulsanti, link, SVG e componenti custom tramite fallback pointer/mouse;
+- acquisizione di un numero definito di pagine oppure modalità **Tutte**;
+- fine documento automatica quando il comando avanti non è più disponibile;
+- controllo del cambio pagina e stabilità visiva;
+- segnali DOM di fine rendering: ready state, font, immagini, loader, `aria-busy`, mutazioni;
+- nitidezza mantenuta come diagnostica secondaria;
+- impostazioni persistenti in `chrome.storage.local`;
+- OCR locale con Tesseract.js;
 - italiano, inglese o italiano + inglese;
 - PSM Tesseract configurabile;
 - `preserve_interword_spaces` configurabile;
-- upscale dell'immagine usata dal solo OCR, predefinito 2×;
-- PDF OCR costruito con **layer text-only nativo di Tesseract + JPEG originale**;
-- composizione multipagina locale tramite `pdf-lib`;
-- fallback automatico al PDF normale in caso di errore OCR o composizione.
+- upscale OCR 1×–3×, default 2×;
+- PDF ricercabile tramite layer text-only nativo Tesseract + JPEG originale;
+- composizione locale multipagina con `pdf-lib`;
+- fallback al PDF normale in caso di errore OCR.
 
-## Installazione in Chrome / Edge / Brave
+## Installazione
 
-1. Passare al branch `browser-extension` del repository.
-2. Scaricare o clonare il repository.
-3. Aprire la pagina delle estensioni del browser:
+1. Clona o scarica il repository.
+2. Se necessario, passa al branch dedicato:
+
+   ```bash
+   git checkout browser-extension
+   ```
+
+3. Apri la pagina delle estensioni:
    - Chrome: `chrome://extensions/`
    - Edge: `edge://extensions/`
    - Brave: `brave://extensions/`
-4. Attivare **Modalità sviluppatore**.
-5. Scegliere **Carica estensione non pacchettizzata** / **Load unpacked**.
-6. Selezionare la cartella `extension/`.
+4. Attiva **Modalità sviluppatore**.
+5. Premi **Carica estensione non pacchettizzata** / **Load unpacked**.
+6. Seleziona questa cartella `extension/`.
 
-## Asset OCR locali
-
-Per usare l'OCR servono Tesseract.js, il core WASM, i modelli lingua e `pdf-lib`.
-
-Istruzioni complete: [`OCR_ASSETS.md`](OCR_ASSETS.md).
-
-Metodo rapido su Windows PowerShell, dalla root del repository:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\extension\scripts\install-tesseract-assets.ps1
-```
-
-Su Linux/macOS/Git Bash:
-
-```bash
-bash ./extension/scripts/install-tesseract-assets.sh
-```
-
-Dalla v0.5.0 lo script installa anche:
-
-```text
-extension/lib/pdf-lib/pdf-lib.min.js
-```
-
-Dopo l'installazione ricaricare l'estensione dalla pagina `chrome://extensions/`.
+Gli asset OCR correnti sono inclusi nel repository. Per rigenerarli consulta [`OCR_ASSETS.md`](OCR_ASSETS.md).
 
 ## Utilizzo
 
-1. Aprire il documento e posizionarsi sulla prima pagina da acquisire.
-2. Aprire Ebook2PDF dal pulsante dell'estensione.
-3. Impostare il numero di pagine.
-4. Premere **Seleziona area pagina** e trascinare il rettangolo.
-5. Premere **Seleziona pulsante avanti** e scegliere il controllo del viewer.
-6. Se desiderato, attivare **Crea PDF ricercabile con OCR locale**.
-7. Le opzioni avanzate sono disponibili tramite il pulsante ⚙️ accanto al titolo.
-8. Premere **Avvia acquisizione**.
-9. Con OCR attivo vengono eseguiti tre step: acquisizione, OCR, composizione PDF.
+1. Apri il documento sulla prima pagina da acquisire.
+2. Apri Ebook2PDF dalla sua icona.
+3. Imposta il numero di pagine oppure seleziona **Tutte**.
+4. Seleziona l'area pagina.
+5. Seleziona il comando per avanzare.
+6. Attiva l'OCR se vuoi un PDF ricercabile.
+7. Configura eventualmente le opzioni tramite ⚙️.
+8. Avvia l'acquisizione.
 
-Quando il PDF OCR viene prodotto correttamente il nome contiene il suffisso `_ocr.pdf`.
+Con **Tutte**, l'estensione continua finché il comando avanti scompare; a quel punto passa automaticamente a OCR e PDF.
 
-## OCR v0.5.0
+## Rendering pagina
 
-La pipeline non ricostruisce più manualmente il testo tramite bounding box e Helvetica.
+Dalla v0.6 Ebook2PDF non usa più la nitidezza come criterio principale di fine caricamento. Combina stabilità visiva e segnali DOM. La nitidezza resta disponibile soltanto come informazione diagnostica.
+
+Dettagli: [`RENDER_READINESS.md`](RENDER_READINESS.md).
+
+## OCR e PDF
 
 ```text
 JPEG originale
-    ├──────────────→ immagine visibile nel PDF finale
+    ├──────────────→ immagine visibile finale
     │
     └→ upscale OCR
           ↓
@@ -98,63 +87,16 @@ JPEG originale
           ↓
         pdf-lib
           ↓
-immagine originale + layer Tesseract
-          ↓
-PDF ricercabile e selezionabile
+JPEG originale + layer Tesseract
 ```
 
-Tesseract decide direttamente font, baseline, spaziatura e geometria del proprio layer PDF. Ebook2PDF non riposiziona più parole o righe manualmente.
+Tesseract gestisce direttamente baseline, spaziatura e geometria del layer OCR. Ebook2PDF conserva invece il JPEG originale come contenuto visibile.
 
-L'upscale OCR è indipendente dall'immagine finale. Il DPI passato a Tesseract viene moltiplicato per lo stesso fattore, così il PDF text-only mantiene le stesse dimensioni fisiche della pagina originale e resta allineato al JPEG.
+Dettagli: [`OCR_TUNING.md`](OCR_TUNING.md).
 
-## Impostazioni acquisizione
+## Privacy
 
-Le impostazioni sono persistenti tramite `chrome.storage.local`:
-
-- attesa dopo cambio pagina;
-- attesa tra retry;
-- tentativi massimi;
-- ratio minimo di nitidezza rispetto alla baseline;
-- controllo duplicati;
-- controllo caricamento/nitidezza.
-
-La soglia di nitidezza è calcolata come:
-
-```text
-soglia = baseline × ratio
-```
-
-Il default è `0.50`.
-
-## Impostazioni OCR
-
-- lingua: italiano, inglese, italiano + inglese;
-- PSM 3, 4, 6 o 11;
-- preservazione spazi tra parole;
-- upscale OCR da 1× a 3×, default 2×.
-
-Per dettagli sui PSM: [`OCR_TUNING.md`](OCR_TUNING.md).
-
-## Privacy OCR
-
-Tesseract.js, il core WebAssembly, i modelli lingua e pdf-lib sono caricati dalla stessa estensione. Le pagine non vengono inviate a Google, Microsoft, AWS o altri servizi OCR esterni.
-
-## Comportamento in caso di errore OCR
-
-L'OCR non deve compromettere l'acquisizione già eseguita. Se Tesseract o pdf-lib non possono essere inizializzati:
-
-1. l'errore viene scritto nel log;
-2. le immagini acquisite vengono conservate;
-3. viene creato il PDF normale senza OCR.
-
-## Limiti noti
-
-- immagini JPEG e PDF text-only OCR vengono mantenuti in memoria fino alla composizione finale: documenti molto lunghi possono richiedere molta RAM;
-- l'upscale OCR aumenta tempo e memoria;
-- il comando "avanti" deve essere raggiungibile dal DOM principale;
-- iframe cross-origin e viewer particolari possono richiedere adattamenti;
-- non è ancora presente il salvataggio/ripristino di una sessione interrotta;
-- la qualità OCR dipende dalla risoluzione, dal contrasto e dal layout del documento.
+Tesseract.js, i modelli lingua, il core WebAssembly e `pdf-lib` sono eseguiti localmente dall'estensione. Le immagini non vengono intenzionalmente inviate a servizi OCR cloud.
 
 ## Struttura principale
 
@@ -166,28 +108,30 @@ extension/
 ├── sidepanel.html
 ├── sidepanel.css
 ├── sidepanel.js
+├── acquisition-end-fallback.js
+├── branding.js
 ├── ocr.js
 ├── native-pdf.js
-├── OCR_ASSETS.md
-├── OCR_TUNING.md
-├── scripts/
-│   ├── install-tesseract-assets.ps1
-│   └── install-tesseract-assets.sh
+├── icons/
+│   ├── icon16.png
+│   ├── icon32.png
+│   ├── icon48.png
+│   └── icon128.png
 ├── lib/
 │   ├── tesseract/
 │   ├── tesseract-core/
 │   └── pdf-lib/
 ├── tessdata/
-│   ├── ita.traineddata.gz
-│   └── eng.traineddata.gz
-└── README.md
+├── scripts/
+├── OCR_ASSETS.md
+├── OCR_TUNING.md
+└── RENDER_READINESS.md
 ```
 
-## Sviluppi successivi suggeriti
+## Limiti noti
 
-- persistenza dello stato di una sessione interrotta;
-- gestione per blocchi/IndexedDB per ridurre l'uso della RAM;
-- selezione di elementi dentro iframe quando consentito;
-- profili specifici per viewer noti;
-- re-OCR selettivo di regioni a bassa confidenza;
-- diagnostica avanzata delle pagine OCR.
+- iframe cross-origin e viewer molto particolari possono impedire l'accesso al comando avanti;
+- documenti molto lunghi possono richiedere molta memoria;
+- l'upscale OCR aumenta tempi e RAM;
+- l'accuratezza OCR dipende dalla qualità grafica della pagina;
+- non è ancora presente il salvataggio/ripristino di una sessione interrotta.
