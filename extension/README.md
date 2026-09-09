@@ -6,10 +6,10 @@
 
 Estensione Chromium di **Ebook2PDF** per acquisire le pagine visibili di ebook e documenti web autorizzati, creare PDF locali e aggiungere OCR opzionale con Tesseract.js.
 
-**Autore:** Prof. Adriani · [@il-prof-f-a](https://github.com/il-prof-f-a)  
+**Autore:** proffa  
 **Repository:** [il-prof-f-a/ebook2pdf-python](https://github.com/il-prof-f-a/ebook2pdf-python)
 
-Per la documentazione generale del progetto, compreso lo **script Python**, consulta il [`README.md`](../README.md) nella root del repository.
+Per la documentazione generale del progetto, compresa l'**app desktop Python**, consulta il [`README.md`](../README.md) nella root del repository.
 
 > Usare esclusivamente con documenti per i quali si dispone del diritto o dell'autorizzazione alla copia. L'estensione non implementa rimozione DRM, decifratura o accesso a contenuti non visibili all'utente.
 
@@ -37,20 +37,22 @@ Per la documentazione generale del progetto, compreso lo **script Python**, cons
 
 ## Installazione
 
-1. Clona o scarica il repository.
-2. Se necessario, passa al branch dedicato:
+L'estensione è già integrata nel branch `main`, quindi non è necessario effettuare checkout su rami dedicati.
+
+1. Clona o scarica il repository:
 
    ```bash
-   git checkout browser-extension
+   git clone https://github.com/il-prof-f-a/ebook2pdf-python.git
+   cd ebook2pdf-python
    ```
 
-3. Apri la pagina delle estensioni:
+2. Apri la pagina delle estensioni:
    - Chrome: `chrome://extensions/`
    - Edge: `edge://extensions/`
    - Brave: `brave://extensions/`
-4. Attiva **Modalità sviluppatore**.
-5. Premi **Carica estensione non pacchettizzata** / **Load unpacked**.
-6. Seleziona questa cartella `extension/`.
+3. Attiva **Modalità sviluppatore**.
+4. Premi **Carica estensione non pacchettizzata** / **Load unpacked**.
+5. Seleziona la cartella `extension/`.
 
 Gli asset OCR correnti sono inclusi nel repository. Per rigenerarli consulta [`OCR_ASSETS.md`](OCR_ASSETS.md).
 
