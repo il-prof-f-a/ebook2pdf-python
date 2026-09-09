@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="extension/icons/icon128.png" alt="Ebook2PDF" width="128">
-</p>
-
 <h1 align="center">Ebook2PDF</h1>
 
 <p align="center">
@@ -49,6 +45,106 @@ cd ebook2pdf-python
 ```
 
 Da qui puoi scegliere se utilizzare l'**app desktop Python**, l'**estensione browser**, oppure entrambe.
+
+---
+
+# Estensione browser
+
+L'estensione Manifest V3 è contenuta nella cartella `extension/`.
+
+## Installazione in Chrome, Edge o Brave
+
+Dopo aver clonato o scaricato il repository, apri la pagina delle estensioni del browser:
+
+- Chrome: `chrome://extensions/`
+- Edge: `edge://extensions/`
+- Brave: `brave://extensions/`
+
+Poi:
+
+1. attiva **Modalità sviluppatore**;
+2. scegli **Carica estensione non pacchettizzata** / **Load unpacked**;
+3. seleziona la cartella `extension/` del repository;
+4. opzionalmente fissa Ebook2PDF nella barra degli strumenti.
+
+Gli asset Tesseract.js, WebAssembly, i modelli `ita`/`eng` e `pdf-lib` necessari all'OCR sono inclusi nel repository.
+
+Se vuoi rigenerarli o aggiornarli, su Windows PowerShell puoi eseguire:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\extension\scripts\install-tesseract-assets.ps1
+```
+
+Su Linux, macOS o Git Bash:
+
+```bash
+bash ./extension/scripts/install-tesseract-assets.sh
+```
+
+Dopo aver aggiornato i file dell'estensione, premi **Ricarica** nella pagina delle estensioni del browser.
+
+## Utilizzo dell'estensione
+
+1. Apri il documento sulla prima pagina.
+2. Apri Ebook2PDF dalla sua icona.
+3. Imposta un numero di pagine oppure seleziona **Tutte**.
+4. Seleziona graficamente l'area della pagina.
+5. Seleziona il comando DOM utilizzato per avanzare.
+6. Abilita eventualmente l'OCR.
+7. Modifica le impostazioni tramite ⚙.
+8. Avvia l'acquisizione.
+
+Con **Tutte**, l'estensione continua finché il comando "pagina successiva" non è più disponibile oppure non produce più un cambiamento della pagina. A quel punto passa automaticamente a OCR e generazione PDF.
+
+## Rilevamento del completamento della pagina
+
+L'estensione combina:
+
+- verifica del cambiamento rispetto alla pagina precedente;
+- stabilità visiva tra screenshot consecutivi;
+- `document.readyState`;
+- stato dei font;
+- immagini non ancora complete;
+- `aria-busy`;
+- loader/spinner visibili;
+- quiete delle mutazioni DOM.
+
+La nitidezza resta un controllo diagnostico secondario.
+
+Dettagli: [`extension/RENDER_READINESS.md`](extension/RENDER_READINESS.md).
+
+## OCR dell'estensione
+
+L'OCR viene eseguito localmente con Tesseract.js.
+
+```text
+JPEG originale
+    ├──────────────→ immagine visibile nel PDF finale
+    │
+    └→ upscale OCR
+          ↓
+      Tesseract.js
+          ↓
+   PDF text-only nativo
+          ↓
+        pdf-lib
+          ↓
+JPEG originale + layer Tesseract
+```
+
+Tesseract gestisce direttamente geometria, baseline e spaziatura del layer testuale. Ebook2PDF mantiene il JPEG originale come contenuto visibile del PDF.
+
+Dettagli: [`extension/OCR_TUNING.md`](extension/OCR_TUNING.md).
+
+---
+
+## 🎥 Video tutorial dell'estensione
+
+Nel video seguente mostro come installare e utilizzare l'estensione Ebook2PDF:
+
+[![Video tutorial Ebook2PDF](https://img.youtube.com/vi/4KZX2lSnJa0/maxresdefault.jpg)](https://www.youtube.com/watch?v=4KZX2lSnJa0)
+
+▶️ [Guarda il tutorial su YouTube](https://www.youtube.com/watch?v=4KZX2lSnJa0)
 
 ---
 
@@ -158,106 +254,6 @@ JPEG originale + layer OCR
 L'ingrandimento OCR viene compensato nel DPI per mantenere il layer testuale allineato all'immagine originale.
 
 Documentazione dettagliata: [`DESKTOP.md`](DESKTOP.md).
-
----
-
-# Estensione browser
-
-L'estensione Manifest V3 è contenuta nella cartella `extension/`.
-
-## Installazione in Chrome, Edge o Brave
-
-Dopo aver clonato o scaricato il repository, apri la pagina delle estensioni del browser:
-
-- Chrome: `chrome://extensions/`
-- Edge: `edge://extensions/`
-- Brave: `brave://extensions/`
-
-Poi:
-
-1. attiva **Modalità sviluppatore**;
-2. scegli **Carica estensione non pacchettizzata** / **Load unpacked**;
-3. seleziona la cartella `extension/` del repository;
-4. opzionalmente fissa Ebook2PDF nella barra degli strumenti.
-
-Gli asset Tesseract.js, WebAssembly, i modelli `ita`/`eng` e `pdf-lib` necessari all'OCR sono inclusi nel repository.
-
-Se vuoi rigenerarli o aggiornarli, su Windows PowerShell puoi eseguire:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\extension\scripts\install-tesseract-assets.ps1
-```
-
-Su Linux, macOS o Git Bash:
-
-```bash
-bash ./extension/scripts/install-tesseract-assets.sh
-```
-
-Dopo aver aggiornato i file dell'estensione, premi **Ricarica** nella pagina delle estensioni del browser.
-
-## Utilizzo dell'estensione
-
-1. Apri il documento sulla prima pagina.
-2. Apri Ebook2PDF dalla sua icona.
-3. Imposta un numero di pagine oppure seleziona **Tutte**.
-4. Seleziona graficamente l'area della pagina.
-5. Seleziona il comando DOM utilizzato per avanzare.
-6. Abilita eventualmente l'OCR.
-7. Modifica le impostazioni tramite ⚙.
-8. Avvia l'acquisizione.
-
-Con **Tutte**, l'estensione continua finché il comando "pagina successiva" non è più disponibile oppure non produce più un cambiamento della pagina. A quel punto passa automaticamente a OCR e generazione PDF.
-
-## Rilevamento del completamento della pagina
-
-L'estensione combina:
-
-- verifica del cambiamento rispetto alla pagina precedente;
-- stabilità visiva tra screenshot consecutivi;
-- `document.readyState`;
-- stato dei font;
-- immagini non ancora complete;
-- `aria-busy`;
-- loader/spinner visibili;
-- quiete delle mutazioni DOM.
-
-La nitidezza resta un controllo diagnostico secondario.
-
-Dettagli: [`extension/RENDER_READINESS.md`](extension/RENDER_READINESS.md).
-
-## OCR dell'estensione
-
-L'OCR viene eseguito localmente con Tesseract.js.
-
-```text
-JPEG originale
-    ├──────────────→ immagine visibile nel PDF finale
-    │
-    └→ upscale OCR
-          ↓
-      Tesseract.js
-          ↓
-   PDF text-only nativo
-          ↓
-        pdf-lib
-          ↓
-JPEG originale + layer Tesseract
-```
-
-Tesseract gestisce direttamente geometria, baseline e spaziatura del layer testuale. Ebook2PDF mantiene il JPEG originale come contenuto visibile del PDF.
-
-Dettagli: [`extension/OCR_TUNING.md`](extension/OCR_TUNING.md).
-
----
-
-## 🎥 Video tutorial dell'estensione
-
-Nel video seguente mostro come installare e utilizzare l'estensione Ebook2PDF:
-
-[![Video tutorial Ebook2PDF](https://img.youtube.com/vi/4KZX2lSnJa0/maxresdefault.jpg)](https://www.youtube.com/watch?v=4KZX2lSnJa0)
-
-▶️ [Guarda il tutorial su YouTube](https://www.youtube.com/watch?v=4KZX2lSnJa0)
 
 ---
 
