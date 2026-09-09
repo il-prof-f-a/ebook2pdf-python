@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ebook2PDF",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Cattura pagine visibili di documenti online autorizzati e le raccoglie in un PDF, con OCR locale opzionale.",
   "permissions": [
     "activeTab",
