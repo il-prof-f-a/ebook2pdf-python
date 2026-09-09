@@ -6,7 +6,7 @@
 
 Estensione Chromium di **Ebook2PDF** per acquisire le pagine visibili di ebook e documenti web autorizzati, creare PDF locali e aggiungere OCR opzionale con Tesseract.js.
 
-**Autore:** Il Prof.  
+**Autore:** Il Prof. · [@il-prof-f-a](https://github.com/il-prof-f-a)  
 **Repository:** [il-prof-f-a/ebook2pdf-python](https://github.com/il-prof-f-a/ebook2pdf-python)
 
 Per la documentazione generale del progetto, compresa l'**app desktop Python**, consulta il [`README.md`](../README.md) nella root del repository.
