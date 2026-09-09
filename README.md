@@ -6,7 +6,7 @@
 
 <p align="center">
   Acquisisce le pagine visibili di ebook e documenti web autorizzati e le raccoglie in un PDF locale.<br>
-  Disponibile come <strong>script Python</strong> oppure come <strong>estensione per browser Chromium</strong> con OCR locale opzionale.
+  Disponibile come <strong>app desktop Python</strong> oppure come <strong>estensione Chromium</strong>, entrambe con OCR locale opzionale.
 </p>
 
 <p align="center">
@@ -21,65 +21,151 @@
 
 ## Due modalità di utilizzo
 
-| | Script Python | Estensione browser |
+| | App desktop Python | Estensione browser |
 |---|---|---|
-| Ambiente | Windows/desktop | Chrome, Edge, Brave e browser Chromium compatibili |
-| Selezione area | coordinate schermo | selezione grafica nel browser |
+| Ambiente | Windows / Linux / macOS | Chrome, Edge, Brave e Chromium compatibili |
+| Interfaccia | Tkinter | pannello laterale Chromium |
+| Selezione area | coordinate schermo con countdown | selezione grafica nel browser |
 | Pagina successiva | coordinate del mouse | elemento DOM selezionato dall'utente |
-| Numero pagine | numero definito | numero definito oppure **Tutte** |
-| Fine documento automatica | no | sì, quando il comando avanti non è più disponibile |
-| Controllo rendering | retry + controlli immagine | stabilità visiva + segnali DOM |
-| OCR | esterno/manuale | **Tesseract.js locale opzionale** |
-| PDF ricercabile | con post-elaborazione | integrato |
-| Configurazione | console | pannello laterale + impostazioni persistenti |
+| Numero pagine | numero definito oppure **Tutte** | numero definito oppure **Tutte** |
+| Fine documento automatica | assenza di cambiamento dopo i retry | scomparsa del controllo avanti o assenza di cambiamento |
+| Fine rendering | stabilità visiva | stabilità visiva + segnali DOM |
+| Nitidezza | diagnostica | diagnostica |
+| OCR | **Tesseract nativo locale** | **Tesseract.js locale** |
+| PDF ricercabile | Tesseract text-only + PyMuPDF | Tesseract text-only + pdf-lib |
+| Configurazione | `~/.ebook2pdf/config.json` | `chrome.storage.local` |
 
-Per un utilizzo normale nel browser è consigliata l'**estensione**. Lo script Python resta utile come soluzione semplice, indipendente dal DOM del portale e facilmente modificabile.
+Le due implementazioni condividono quindi la stessa logica operativa. L'estensione ha un vantaggio aggiuntivo nei viewer web perché può leggere segnali DOM come `document.readyState`, font, immagini, loader e `aria-busy`; la versione desktop resta invece indipendente dal browser e lavora esclusivamente sui pixel visibili sullo schermo.
+
+---
+
+# App desktop Python
+
+La versione desktop è sviluppata sul branch:
+
+```bash
+git checkout python-desktop-gui
+```
+
+## Installazione
+
+Richiede Python 3.10 o successivo.
+
+```bash
+git clone https://github.com/il-prof-f-a/ebook2pdf-python.git
+cd ebook2pdf-python
+git checkout python-desktop-gui
+python -m pip install -r requirements.txt
+```
+
+Dipendenze Python principali:
+
+- `pyautogui` — click e coordinate mouse;
+- `Pillow` — screenshot e immagini;
+- `numpy` — confronto immagini e diagnostica;
+- `PyMuPDF` — composizione PDF e layer OCR.
+
+Tkinter è normalmente incluso in Python su Windows. Su alcune distribuzioni Linux può essere necessario installare `python3-tk`.
+
+### Tesseract
+
+Per il PDF ricercabile serve anche **Tesseract OCR** installato nel sistema.
+
+L'app cerca automaticamente `tesseract` nel `PATH` e nei percorsi più comuni. Su Windows, tipicamente:
+
+```text
+C:\Program Files\Tesseract-OCR\tesseract.exe
+```
+
+Il percorso può essere impostato da **⚙ Impostazioni → OCR** e verificato tramite **Test Tesseract**.
+
+Per usare `ita+eng` devono essere installati entrambi i modelli lingua.
+
+## Avvio
+
+```bash
+python ebook2pdf.py
+```
+
+oppure:
+
+```bash
+python -m ebook2pdf_app
+```
+
+## Utilizzo desktop
+
+1. apri il documento sulla prima pagina da acquisire;
+2. scegli il numero di pagine oppure abilita **Tutte**;
+3. premi **Seleziona area pagina**;
+4. durante il countdown posiziona il mouse sull'angolo superiore sinistro e poi su quello inferiore destro;
+5. premi **Seleziona punto avanti** e posiziona il mouse sul comando del viewer;
+6. scegli il PDF di destinazione;
+7. abilita eventualmente l'OCR;
+8. configura le opzioni avanzate tramite ⚙;
+9. premi **Avvia acquisizione**.
+
+La GUI rimane responsiva perché acquisizione, OCR e composizione PDF vengono eseguiti in un worker thread separato.
+
+Il pulsante **Ferma** interrompe il flusso in modo controllato e conserva le pagine già acquisite.
+
+## Rendering e modalità Tutte
+
+Dopo ogni click Ebook2PDF:
+
+1. attende il ritardo minimo;
+2. verifica il cambiamento rispetto alla pagina precedente;
+3. acquisisce frame successivi;
+4. considera pronta la pagina dopo il numero configurato di confronti consecutivi sotto la soglia di stabilità.
+
+La nitidezza resta soltanto diagnostica e non fa più saltare una pagina già stabilizzata.
+
+In modalità **Tutte**, se tutti i retry sul punto "pagina successiva" non producono un cambiamento visivo sufficiente, la fine del documento viene considerata raggiunta e il programma passa a OCR/PDF.
+
+## OCR desktop
+
+Parametri disponibili:
+
+- lingua `ita`, `eng`, `ita+eng`;
+- PSM 3, 4, 6, 11;
+- `preserve_interword_spaces`;
+- upscale OCR 1×–3×;
+- percorso eseguibile Tesseract.
+
+Pipeline:
+
+```text
+JPEG originale
+    ├──────────────→ immagine visibile nel PDF finale
+    │
+    └→ upscale OCR
+          ↓
+       Tesseract
+          ↓
+   PDF text-only nativo
+          ↓
+       PyMuPDF
+          ↓
+JPEG originale + layer OCR
+```
+
+L'ingrandimento OCR viene compensato nel DPI, in modo da mantenere il layer testuale allineato all'immagine originale.
+
+Documentazione dettagliata: [`DESKTOP.md`](DESKTOP.md).
 
 ---
 
 # Estensione browser
 
-## Funzioni principali
+L'estensione Manifest V3 è contenuta in `extension/` e viene sviluppata sul branch `browser-extension`.
 
-L'estensione Ebook2PDF utilizza Manifest V3 e lavora interamente nel browser. Permette di:
-
-- selezionare graficamente l'area della pagina da acquisire;
-- scegliere direttamente il controllo usato dal viewer per passare alla pagina successiva;
-- gestire pulsanti, link, componenti custom e controlli basati su SVG;
-- acquisire un numero prestabilito di pagine oppure scegliere **Tutte**;
-- attendere il completamento del rendering prima della cattura;
-- verificare che la nuova pagina sia realmente diversa dalla precedente;
-- usare segnali DOM come `document.readyState`, font caricati, immagini complete, `aria-busy`, loader e quiete delle mutazioni;
-- usare anche la stabilità visiva tra screenshot consecutivi;
-- mantenere la nitidezza come diagnostica senza scartare automaticamente una pagina già stabilizzata;
-- creare PDF multipagina completamente in locale;
-- aggiungere OCR locale con Tesseract.js;
-- produrre PDF ricercabili e selezionabili usando il renderer PDF nativo di Tesseract;
-- scegliere lingua OCR, PSM e ingrandimento dell'immagine usata dal riconoscimento;
-- conservare le impostazioni in `chrome.storage.local`.
-
-## Installazione dell'estensione
-
-### 1. Scarica il repository
-
-Con Git:
-
-```bash
-git clone https://github.com/il-prof-f-a/ebook2pdf-python.git
-cd ebook2pdf-python
-```
-
-Se stai provando l'estensione prima che il branch dedicato venga integrato nel ramo principale:
+## Installazione
 
 ```bash
 git checkout browser-extension
 ```
 
-In alternativa puoi scaricare il repository come ZIP da GitHub ed estrarlo in una cartella locale.
-
-### 2. Carica l'estensione nel browser
-
-Apri la pagina delle estensioni:
+Apri quindi:
 
 - Chrome: `chrome://extensions/`
 - Edge: `edge://extensions/`
@@ -89,93 +175,35 @@ Poi:
 
 1. attiva **Modalità sviluppatore**;
 2. scegli **Carica estensione non pacchettizzata** / **Load unpacked**;
-3. seleziona la cartella `extension/` del repository;
-4. opzionalmente fissa Ebook2PDF nella barra degli strumenti del browser.
+3. seleziona la cartella `extension/`;
+4. opzionalmente fissa Ebook2PDF nella barra degli strumenti.
 
-L'icona blu di Ebook2PDF comparirà tra le estensioni installate.
-
-### 3. Asset OCR
-
-Gli asset runtime correnti di Tesseract.js, Tesseract Core, i modelli `ita`/`eng` e `pdf-lib` sono inclusi nella cartella `extension/`.
-
-Se devi rigenerarli o aggiornarli, dalla root del repository puoi usare gli script predisposti. Su Windows PowerShell:
+Gli asset Tesseract.js, WASM, `ita`/`eng` e `pdf-lib` correnti sono inclusi nel ramo dell'estensione. Per rigenerarli:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\extension\scripts\install-tesseract-assets.ps1
 ```
 
-Su Linux, macOS o Git Bash:
+oppure:
 
 ```bash
 bash ./extension/scripts/install-tesseract-assets.sh
 ```
 
-Gli script richiedono Node.js/npm. Dopo aver aggiornato gli asset premi **Ricarica** nella pagina delle estensioni.
+## Utilizzo dell'estensione
 
-## Come usare l'estensione
+1. apri il documento sulla prima pagina;
+2. apri Ebook2PDF dalla sua icona;
+3. imposta un numero di pagine oppure **Tutte**;
+4. seleziona graficamente l'area pagina;
+5. seleziona il comando DOM per avanzare;
+6. abilita eventualmente l'OCR;
+7. modifica le impostazioni tramite ⚙;
+8. avvia l'acquisizione.
 
-1. Apri l'ebook o il documento web e posizionati sulla prima pagina da acquisire.
-2. Apri Ebook2PDF dalla sua icona: compare il pannello laterale.
-3. Scegli quante pagine acquisire oppure abilita **Tutte**.
-4. Premi **Seleziona area pagina** e trascina il rettangolo sull'area del documento da includere.
-5. Premi **Seleziona pulsante avanti** e clicca il controllo che porta alla pagina successiva.
-6. Se vuoi un PDF ricercabile, abilita **OCR locale**.
-7. Apri ⚙️ **Impostazioni** se vuoi modificare rendering, retry, segnali DOM, PSM, lingua o upscale OCR.
-8. Premi **Avvia acquisizione**.
+La fine del rendering combina stabilità visiva e segnali DOM. Dettagli: [`extension/RENDER_READINESS.md`](extension/RENDER_READINESS.md).
 
-Con la modalità **Tutte**, Ebook2PDF continua finché il comando "pagina successiva" non è più disponibile. In quel momento chiude l'acquisizione e passa automaticamente all'OCR e alla creazione del PDF.
-
-Se il comando avanti rimane presente ma la pagina non cambia dopo tutti i tentativi configurati, l'acquisizione viene interrotta per evitare duplicati o sequenze sfasate.
-
-## Rilevamento del completamento della pagina
-
-La nitidezza non è più il criterio principale per decidere se una pagina è pronta. Dopo ogni cambio pagina l'estensione combina due gruppi di segnali:
-
-**Stabilità visiva**
-
-- verifica che l'area sia cambiata rispetto alla pagina precedente;
-- confronta screenshot successivi della stessa area;
-- considera stabile la pagina dopo il numero configurato di conferme consecutive.
-
-**Segnali DOM**
-
-- `document.readyState`;
-- stato dei font;
-- immagini visibili ancora incomplete;
-- elementi visibili con `aria-busy="true"`;
-- loader/spinner/loading visibili;
-- tempo trascorso dall'ultima mutazione DOM rilevante nell'area acquisita.
-
-Se un portale non espone segnali DOM utili, Ebook2PDF continua usando la stabilità visiva.
-
-Dettagli tecnici: [`extension/RENDER_READINESS.md`](extension/RENDER_READINESS.md).
-
-## OCR locale e PDF ricercabile
-
-L'OCR viene eseguito con Tesseract.js direttamente nel browser, senza inviare le pagine a servizi OCR esterni.
-
-Pipeline:
-
-```text
-JPEG originale
-    ├──────────────→ immagine visibile nel PDF finale
-    │
-    └→ upscale OCR configurabile
-          ↓
-       Tesseract.js
-          ↓
-   PDF text-only nativo
-          ↓
-        pdf-lib
-          ↓
-JPEG originale + layer Tesseract
-          ↓
-PDF ricercabile e selezionabile
-```
-
-Il PDF visibile conserva quindi l'immagine acquisita dal browser, mentre spaziatura, baseline e geometria del testo OCR sono gestiti direttamente dal renderer PDF di Tesseract.
-
-Approfondimenti: [`extension/OCR_TUNING.md`](extension/OCR_TUNING.md).
+La pipeline OCR usa il renderer PDF text-only nativo di Tesseract.js e mantiene il JPEG originale come contenuto visibile. Dettagli: [`extension/OCR_TUNING.md`](extension/OCR_TUNING.md).
 
 ---
 
@@ -193,54 +221,23 @@ Sostituire VIDEO_ID e rimuovere il commento quando il video sarà disponibile:
 
 ---
 
-# Script Python
-
-Lo script originale `ebook2pdf.py` automatizza la cattura dello schermo tramite coordinate del mouse. Non richiede l'installazione di un'estensione browser ed è utile quando il viewer non è facilmente gestibile tramite DOM.
-
-## Dipendenze
-
-Installa Python e poi:
-
-```bash
-pip install pyautogui pillow numpy
-```
-
-Lo script utilizza:
-
-- `pyautogui` per coordinate e click;
-- Pillow / `ImageGrab` per screenshot e PDF;
-- NumPy per la stima della nitidezza.
-
-## Avvio
-
-Dalla cartella del repository:
-
-```bash
-python ebook2pdf.py
-```
-
-La procedura guidata chiede:
-
-1. numero di pagine;
-2. ritardo tra cambio pagina e cattura;
-3. angolo superiore sinistro dell'area da acquisire;
-4. angolo inferiore destro;
-5. posizione del comando pagina successiva;
-6. percorso del PDF di uscita.
-
-Una volta iniziata l'acquisizione, lo script cattura la regione scelta, controlla duplicati e qualità dell'immagine, esegue i retry previsti e crea il PDF con le pagine valide.
-
-A differenza dell'estensione, lo script non integra l'OCR locale: se serve testo ricercabile è necessario effettuare un passaggio OCR successivo con uno strumento a propria scelta.
-
----
-
 ## Struttura del progetto
 
 ```text
 ebook2pdf-python/
-├── ebook2pdf.py                 # script Python originale
-├── README.md
-└── extension/                   # estensione Chromium
+├── ebook2pdf.py                 # launcher desktop
+├── requirements.txt
+├── DESKTOP.md
+├── ebook2pdf_app/
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── settings.py
+│   ├── capture.py
+│   ├── render.py
+│   ├── ocr.py
+│   ├── pdf.py
+│   └── gui.py
+└── extension/
     ├── manifest.json
     ├── background.js
     ├── content.js
@@ -252,41 +249,23 @@ ebook2pdf-python/
     ├── ocr.js
     ├── native-pdf.js
     ├── icons/
-    │   ├── icon16.png
-    │   ├── icon32.png
-    │   ├── icon48.png
-    │   └── icon128.png
     ├── lib/
-    │   ├── tesseract/
-    │   ├── tesseract-core/
-    │   └── pdf-lib/
     ├── tessdata/
     └── scripts/
 ```
 
-## Aggiornare l'estensione dopo un `git pull`
+## Privacy
 
-Dopo aver aggiornato il repository:
-
-```bash
-git pull
-```
-
-apri nuovamente `chrome://extensions/` e premi **Ricarica** sulla scheda di Ebook2PDF. Non è necessario rimuovere e reinstallare l'estensione.
-
----
+Entrambe le versioni eseguono acquisizione, OCR e composizione PDF localmente. Non sono richieste API OCR cloud e Ebook2PDF non invia intenzionalmente le pagine a servizi esterni.
 
 ## Limiti noti
 
-- l'acquisizione riguarda solo ciò che è visibile e renderizzato nella scheda;
-- iframe cross-origin e alcuni viewer possono impedire l'accesso al comando pagina successiva;
+- l'acquisizione riguarda solo ciò che è visibile e renderizzato;
+- la versione desktop non dispone dei segnali DOM del viewer;
+- l'estensione può essere limitata da iframe cross-origin o viewer particolari;
 - documenti molto lunghi, soprattutto con OCR e upscale elevato, possono richiedere molta RAM;
 - la qualità OCR dipende da risoluzione, contrasto, font e layout della pagina;
-- nessun sistema automatico può garantire compatibilità con ogni viewer web: i controlli avanzati sono configurabili proprio per adattarsi a comportamenti differenti.
-
-## Privacy
-
-Screenshot, OCR e composizione PDF vengono eseguiti localmente dal browser. Ebook2PDF non richiede API cloud per l'OCR e non invia intenzionalmente le pagine a servizi esterni.
+- nessuna delle due modalità può garantire compatibilità con ogni viewer.
 
 ## Nota legale ed etica
 
