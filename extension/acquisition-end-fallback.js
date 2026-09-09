@@ -9,6 +9,20 @@
   const startButton = originalStart.cloneNode(true);
   originalStart.replaceWith(startButton);
 
+  const pagesInput = document.getElementById("pages");
+  const allPagesInput = document.getElementById("allPages");
+
+  function syncPageMode() {
+    if (!pagesInput || !allPagesInput) return;
+    pagesInput.disabled = allPagesInput.checked;
+    pagesInput.title = allPagesInput.checked
+      ? "Modalità Tutte: il numero di pagine viene determinato automaticamente"
+      : "Numero massimo di pagine da acquisire";
+  }
+
+  allPagesInput?.addEventListener("change", syncPageMode);
+  syncPageMode();
+
   function isMissingNextControl(result) {
     const message = String(result?.error || "");
     return /pagina successiva/i.test(message) && /non trovato/i.test(message);
@@ -20,19 +34,29 @@
       return;
     }
 
-    const totalPages = Math.max(1, Number($("pages").value) || 1);
+    const acquireAll = allPagesInput?.checked === true;
+    const requestedPages = Math.max(1, Number($("pages").value) || 1);
     const settings = settingsFromForm();
     const enableOcr = $("enableOcr").checked;
 
     stopRequested = false;
     $("start").disabled = true;
     $("stop").disabled = false;
-    $("progress").max = totalPages;
-    $("progress").value = 0;
-    $("progressText").textContent = `0/${totalPages}`;
     $("log").textContent = "";
     $("ocrProgressBox").classList.add("hidden");
     setStep(enableOcr ? "1/3 — Acquisizione" : "1/2 — Acquisizione");
+
+    if (acquireAll) {
+      $("progress").max = 1;
+      $("progress").removeAttribute("value");
+      $("progressText").textContent = "0 pagine acquisite — modalità Tutte";
+      log("Modalità Tutte: continuo fino a quando il comando “pagina successiva” non è più disponibile.");
+    } else {
+      $("progress").max = requestedPages;
+      $("progress").value = 0;
+      $("progressText").textContent = `0/${requestedPages}`;
+    }
+
     log(
       `Rendering: max ${settings.renderMaxWait.toFixed(1)}s, intervallo ${settings.stabilityInterval.toFixed(1)}s, ` +
       `${settings.stableSamples} conferme, soglia stabilità ${settings.stabilityThresholdPct.toFixed(2)}%, ` +
@@ -50,7 +74,11 @@
     let reachedEndOfDocument = false;
 
     try {
-      for (let pageIndex = 0; pageIndex < totalPages && !stopRequested; pageIndex++) {
+      for (
+        let pageIndex = 0;
+        !stopRequested && (acquireAll || pageIndex < requestedPages);
+        pageIndex++
+      ) {
         const pageNumber = pageIndex + 1;
         let readiness = null;
 
@@ -68,7 +96,7 @@
                 navigationInterrupted = true;
                 log(
                   `Comando “pagina successiva” non più disponibile. ` +
-                  `Termino l'acquisizione dopo ${pages.length} pagine e proseguo con ${enableOcr ? "l'OCR" : "la creazione del PDF"}.`
+                  `Fine documento rilevata dopo ${pages.length} pagine; proseguo con ${enableOcr ? "l'OCR" : "la creazione del PDF"}.`
                 );
                 break;
               }
@@ -94,7 +122,10 @@
 
           if (!changed && settings.checkDuplicates && !stopRequested) {
             navigationInterrupted = true;
-            log(`Pagina ${pageNumber}: cambio pagina non rilevato. Interrompo l'acquisizione senza saltare la pagina.`);
+            log(
+              `Pagina ${pageNumber}: cambio pagina non rilevato dopo ${settings.attempts} tentativi. ` +
+              `Interrompo l'acquisizione come protezione contro duplicati o viewer bloccato.`
+            );
             break;
           }
         }
@@ -124,16 +155,30 @@
 
         pages.push({ width: capture.width, height: capture.height, jpeg: capture.jpeg });
         previousImageData = capture.imageData;
-        log(`Pagina ${pageNumber}/${totalPages} acquisita.`);
 
-        $("progress").value = pageNumber;
-        $("progressText").textContent = `${pageNumber}/${totalPages} — salvate ${pages.length}`;
+        if (acquireAll) {
+          log(`Pagina ${pageNumber} acquisita.`);
+          $("progress").removeAttribute("value");
+          $("progressText").textContent = `${pages.length} pagine acquisite — modalità Tutte`;
+        } else {
+          log(`Pagina ${pageNumber}/${requestedPages} acquisita.`);
+          $("progress").value = pageNumber;
+          $("progressText").textContent = `${pageNumber}/${requestedPages} — salvate ${pages.length}`;
+        }
       }
 
       if (!pages.length) {
         log("Nessuna pagina acquisita: PDF non creato.");
         setStep("Operazione terminata senza pagine.");
         return;
+      }
+
+      if (acquireAll) {
+        $("progress").max = pages.length;
+        $("progress").value = pages.length;
+        $("progressText").textContent = reachedEndOfDocument
+          ? `${pages.length} pagine acquisite — fine documento`
+          : `${pages.length} pagine acquisite`;
       }
 
       if (navigationInterrupted && !reachedEndOfDocument) {
