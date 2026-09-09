@@ -74,10 +74,10 @@
           <input id="attempts" type="number" min="1" max="20" value="5">
         </label>
 
-        <label>Soglia minima di nitidezza
-          <input id="sharpness" type="number" min="0" max="100" step="0.1" value="7.5">
+        <label>Ratio minimo di nitidezza rispetto alla baseline
+          <input id="sharpness" type="number" min="0.05" max="1" step="0.05" value="0.50">
         </label>
-        <p class="help warning"><strong>Predefinita: 7,5.</strong> Una soglia troppo alta può scartare pagine correttamente caricate ma graficamente poco contrastate. Una soglia troppo bassa può invece accettare una pagina mentre il viewer la sta ancora caricando, quindi sfocata o incompleta.</p>
+        <p class="help warning"><strong>Predefinito: 0,50 (50%).</strong> La prima pagina valida definisce la baseline. Le successive devono avere una nitidezza almeno pari a <em>baseline × ratio</em>. Un ratio troppo alto può scartare pagine valide meno nitide della prima; un ratio troppo basso può accettare una pagina mentre il viewer la sta ancora caricando, quindi sfocata o incompleta.</p>
 
         <label class="check"><input id="checkDuplicates" type="checkbox" checked> controlla pagine duplicate</label>
         <label class="check"><input id="checkQuality" type="checkbox" checked> controlla caricamento e nitidezza</label>
@@ -104,5 +104,6 @@
   </main>
   <script src="ocr.js"></script>
   <script src="sidepanel.js"></script>
+  <script src="quality-ratio.js"></script>
 </body>
 </html>
