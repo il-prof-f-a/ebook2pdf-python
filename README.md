@@ -35,49 +35,57 @@
 | PDF ricercabile | Tesseract text-only + PyMuPDF | Tesseract text-only + pdf-lib |
 | Configurazione | `~/.ebook2pdf/config.json` | `chrome.storage.local` |
 
-Le due implementazioni condividono quindi la stessa logica operativa. L'estensione ha un vantaggio aggiuntivo nei viewer web perché può leggere segnali DOM come `document.readyState`, font, immagini, loader e `aria-busy`; la versione desktop resta invece indipendente dal browser e lavora esclusivamente sui pixel visibili sullo schermo.
+Le due implementazioni condividono la stessa logica operativa. L'estensione può inoltre leggere segnali DOM come `document.readyState`, font, immagini, loader e `aria-busy`; la versione desktop resta invece indipendente dal browser e lavora esclusivamente sui pixel visibili sullo schermo.
+
+---
+
+# Installazione
+
+Clona o scarica il repository:
+
+```bash
+git clone https://github.com/il-prof-f-a/ebook2pdf-python.git
+cd ebook2pdf-python
+```
+
+Da qui puoi scegliere se utilizzare l'**app desktop Python**, l'**estensione browser**, oppure entrambe.
 
 ---
 
 # App desktop Python
 
-La versione desktop è sviluppata sul branch:
+## Requisiti
+
+- Python 3.10 o successivo;
+- Tkinter;
+- Tesseract OCR, necessario solo per creare PDF ricercabili.
+
+Installa le dipendenze Python:
 
 ```bash
-git checkout python-desktop-gui
-```
-
-## Installazione
-
-Richiede Python 3.10 o successivo.
-
-```bash
-git clone https://github.com/il-prof-f-a/ebook2pdf-python.git
-cd ebook2pdf-python
-git checkout python-desktop-gui
 python -m pip install -r requirements.txt
 ```
 
-Dipendenze Python principali:
+Le dipendenze principali sono:
 
 - `pyautogui` — click e coordinate mouse;
 - `Pillow` — screenshot e immagini;
 - `numpy` — confronto immagini e diagnostica;
 - `PyMuPDF` — composizione PDF e layer OCR.
 
-Tkinter è normalmente incluso in Python su Windows. Su alcune distribuzioni Linux può essere necessario installare `python3-tk`.
+Tkinter è normalmente incluso nelle installazioni Windows di Python. Su alcune distribuzioni Linux può essere necessario installare il pacchetto di sistema `python3-tk`.
 
-### Tesseract
+## Tesseract OCR
 
-Per il PDF ricercabile serve anche **Tesseract OCR** installato nel sistema.
+Per ottenere un PDF ricercabile è necessario installare anche **Tesseract OCR** nel sistema.
 
-L'app cerca automaticamente `tesseract` nel `PATH` e nei percorsi più comuni. Su Windows, tipicamente:
+L'applicazione cerca automaticamente `tesseract` nel `PATH` e nei percorsi più comuni. Su Windows il percorso tipico è:
 
 ```text
 C:\Program Files\Tesseract-OCR\tesseract.exe
 ```
 
-Il percorso può essere impostato da **⚙ Impostazioni → OCR** e verificato tramite **Test Tesseract**.
+Il percorso può essere indicato manualmente da **⚙ Impostazioni → OCR** e verificato con **Test Tesseract**.
 
 Per usare `ita+eng` devono essere installati entrambi i modelli lingua.
 
@@ -95,32 +103,30 @@ python -m ebook2pdf_app
 
 ## Utilizzo desktop
 
-1. apri il documento sulla prima pagina da acquisire;
-2. scegli il numero di pagine oppure abilita **Tutte**;
-3. premi **Seleziona area pagina**;
-4. durante il countdown posiziona il mouse sull'angolo superiore sinistro e poi su quello inferiore destro;
-5. premi **Seleziona punto avanti** e posiziona il mouse sul comando del viewer;
-6. scegli il PDF di destinazione;
-7. abilita eventualmente l'OCR;
-8. configura le opzioni avanzate tramite ⚙;
-9. premi **Avvia acquisizione**.
+1. Apri il documento sulla prima pagina da acquisire.
+2. Scegli il numero di pagine oppure abilita **Tutte**.
+3. Premi **Seleziona area pagina**.
+4. Durante il countdown posiziona il mouse sull'angolo superiore sinistro e poi su quello inferiore destro.
+5. Premi **Seleziona punto avanti** e posiziona il mouse sul comando del viewer.
+6. Scegli il PDF di destinazione.
+7. Abilita eventualmente l'OCR.
+8. Configura le opzioni avanzate tramite ⚙.
+9. Premi **Avvia acquisizione**.
 
-La GUI rimane responsiva perché acquisizione, OCR e composizione PDF vengono eseguiti in un worker thread separato.
-
-Il pulsante **Ferma** interrompe il flusso in modo controllato e conserva le pagine già acquisite.
+La GUI rimane responsiva perché acquisizione, OCR e composizione PDF vengono eseguiti in un worker thread separato. Il pulsante **Ferma** interrompe il flusso in modo controllato e conserva le pagine già acquisite.
 
 ## Rendering e modalità Tutte
 
 Dopo ogni click Ebook2PDF:
 
-1. attende il ritardo minimo;
-2. verifica il cambiamento rispetto alla pagina precedente;
+1. attende il ritardo minimo configurato;
+2. verifica che la pagina sia cambiata rispetto alla precedente;
 3. acquisisce frame successivi;
-4. considera pronta la pagina dopo il numero configurato di confronti consecutivi sotto la soglia di stabilità.
+4. considera pronta la pagina quando il numero configurato di confronti consecutivi resta sotto la soglia di stabilità.
 
-La nitidezza resta soltanto diagnostica e non fa più saltare una pagina già stabilizzata.
+La nitidezza viene utilizzata soltanto come informazione diagnostica e non causa lo scarto automatico di una pagina già stabilizzata.
 
-In modalità **Tutte**, se tutti i retry sul punto "pagina successiva" non producono un cambiamento visivo sufficiente, la fine del documento viene considerata raggiunta e il programma passa a OCR/PDF.
+In modalità **Tutte**, se i tentativi sul punto "pagina successiva" non producono più un cambiamento visivo sufficiente, Ebook2PDF considera raggiunta la fine del documento e passa automaticamente a OCR/PDF.
 
 ## OCR desktop
 
@@ -130,7 +136,7 @@ Parametri disponibili:
 - PSM 3, 4, 6, 11;
 - `preserve_interword_spaces`;
 - upscale OCR 1×–3×;
-- percorso eseguibile Tesseract.
+- percorso dell'eseguibile Tesseract.
 
 Pipeline:
 
@@ -149,7 +155,7 @@ JPEG originale
 JPEG originale + layer OCR
 ```
 
-L'ingrandimento OCR viene compensato nel DPI, in modo da mantenere il layer testuale allineato all'immagine originale.
+L'ingrandimento OCR viene compensato nel DPI per mantenere il layer testuale allineato all'immagine originale.
 
 Documentazione dettagliata: [`DESKTOP.md`](DESKTOP.md).
 
@@ -157,18 +163,11 @@ Documentazione dettagliata: [`DESKTOP.md`](DESKTOP.md).
 
 # Estensione browser
 
-L'estensione Manifest V3 è contenuta in `extension/` ed è già integrata nel branch `main` del repository.
+L'estensione Manifest V3 è contenuta nella cartella `extension/`.
 
-## Installazione
+## Installazione in Chrome, Edge o Brave
 
-Clona o scarica normalmente il repository; non è necessario passare a un branch dedicato:
-
-```bash
-git clone https://github.com/il-prof-f-a/ebook2pdf-python.git
-cd ebook2pdf-python
-```
-
-Apri quindi:
+Dopo aver clonato o scaricato il repository, apri la pagina delle estensioni del browser:
 
 - Chrome: `chrome://extensions/`
 - Edge: `edge://extensions/`
@@ -178,41 +177,83 @@ Poi:
 
 1. attiva **Modalità sviluppatore**;
 2. scegli **Carica estensione non pacchettizzata** / **Load unpacked**;
-3. seleziona la cartella `extension/`;
+3. seleziona la cartella `extension/` del repository;
 4. opzionalmente fissa Ebook2PDF nella barra degli strumenti.
 
-Gli asset Tesseract.js, WASM, `ita`/`eng` e `pdf-lib` correnti sono inclusi nel repository. Per rigenerarli:
+Gli asset Tesseract.js, WebAssembly, i modelli `ita`/`eng` e `pdf-lib` necessari all'OCR sono inclusi nel repository.
+
+Se vuoi rigenerarli o aggiornarli, su Windows PowerShell puoi eseguire:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\extension\scripts\install-tesseract-assets.ps1
 ```
 
-oppure:
+Su Linux, macOS o Git Bash:
 
 ```bash
 bash ./extension/scripts/install-tesseract-assets.sh
 ```
 
+Dopo aver aggiornato i file dell'estensione, premi **Ricarica** nella pagina delle estensioni del browser.
+
 ## Utilizzo dell'estensione
 
-1. apri il documento sulla prima pagina;
-2. apri Ebook2PDF dalla sua icona;
-3. imposta un numero di pagine oppure **Tutte**;
-4. seleziona graficamente l'area pagina;
-5. seleziona il comando DOM per avanzare;
-6. abilita eventualmente l'OCR;
-7. modifica le impostazioni tramite ⚙;
-8. avvia l'acquisizione.
+1. Apri il documento sulla prima pagina.
+2. Apri Ebook2PDF dalla sua icona.
+3. Imposta un numero di pagine oppure seleziona **Tutte**.
+4. Seleziona graficamente l'area della pagina.
+5. Seleziona il comando DOM utilizzato per avanzare.
+6. Abilita eventualmente l'OCR.
+7. Modifica le impostazioni tramite ⚙.
+8. Avvia l'acquisizione.
 
-La fine del rendering combina stabilità visiva e segnali DOM. Dettagli: [`extension/RENDER_READINESS.md`](extension/RENDER_READINESS.md).
+Con **Tutte**, l'estensione continua finché il comando "pagina successiva" non è più disponibile oppure non produce più un cambiamento della pagina. A quel punto passa automaticamente a OCR e generazione PDF.
 
-La pipeline OCR usa il renderer PDF text-only nativo di Tesseract.js e mantiene il JPEG originale come contenuto visibile. Dettagli: [`extension/OCR_TUNING.md`](extension/OCR_TUNING.md).
+## Rilevamento del completamento della pagina
+
+L'estensione combina:
+
+- verifica del cambiamento rispetto alla pagina precedente;
+- stabilità visiva tra screenshot consecutivi;
+- `document.readyState`;
+- stato dei font;
+- immagini non ancora complete;
+- `aria-busy`;
+- loader/spinner visibili;
+- quiete delle mutazioni DOM.
+
+La nitidezza resta un controllo diagnostico secondario.
+
+Dettagli: [`extension/RENDER_READINESS.md`](extension/RENDER_READINESS.md).
+
+## OCR dell'estensione
+
+L'OCR viene eseguito localmente con Tesseract.js.
+
+```text
+JPEG originale
+    ├──────────────→ immagine visibile nel PDF finale
+    │
+    └→ upscale OCR
+          ↓
+      Tesseract.js
+          ↓
+   PDF text-only nativo
+          ↓
+        pdf-lib
+          ↓
+JPEG originale + layer Tesseract
+```
+
+Tesseract gestisce direttamente geometria, baseline e spaziatura del layer testuale. Ebook2PDF mantiene il JPEG originale come contenuto visibile del PDF.
+
+Dettagli: [`extension/OCR_TUNING.md`](extension/OCR_TUNING.md).
 
 ---
 
 ## 🎥 Video tutorial dell'estensione
 
-> **Spazio riservato al video YouTube in cui viene mostrata l'installazione e l'utilizzo di Ebook2PDF.**
+> **Spazio riservato al video YouTube in cui verranno mostrati installazione e utilizzo di Ebook2PDF.**
 >
 > Inserire qui il link o l'ID del video quando sarà pubblicato.
 
