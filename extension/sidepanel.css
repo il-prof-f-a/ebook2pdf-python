@@ -1,0 +1,50 @@
+body {
+  margin: 0;
+  font: 14px/1.4 system-ui, sans-serif;
+  background: #f6f7f9;
+  color: #1f2328;
+}
+main { padding: 16px; }
+h1 { margin: 0 0 6px; font-size: 22px; }
+.muted { color: #656d76; margin-top: 0; }
+label { display: block; margin: 12px 0; font-weight: 600; }
+input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 5px;
+  padding: 8px;
+  border: 1px solid #c9d1d9;
+  border-radius: 6px;
+  background: white;
+}
+.check { font-weight: 400; }
+.buttons { display: grid; gap: 8px; margin: 12px 0; }
+button {
+  padding: 9px 10px;
+  border: 1px solid #afb8c1;
+  border-radius: 7px;
+  background: #fff;
+  cursor: pointer;
+}
+button.primary { background: #1f6feb; color: white; border-color: #1f6feb; }
+button:disabled { opacity: .55; cursor: default; }
+.statusbox {
+  background: white;
+  border: 1px solid #d8dee4;
+  border-radius: 7px;
+  padding: 10px;
+  margin: 12px 0;
+}
+progress { width: 100%; margin-top: 10px; }
+#progressText { margin-top: 5px; }
+#log {
+  min-height: 120px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #0d1117;
+  color: #c9d1d9;
+  padding: 10px;
+  border-radius: 7px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
