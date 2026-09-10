@@ -12,14 +12,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   attempts: 5,
   renderMaxWait: 12,
   stabilityInterval: 0.4,
-  stableSamples: 2,
+  stableSamples: 3,
   stabilityThresholdPct: 0.15,
   pageChangeThresholdPct: 0.20,
   useDomSignals: true,
   domIdleMs: 500,
-  sharpnessRatio: 0.50,
   checkDuplicates: true,
-  checkQuality: true,
   ocrLanguage: "ita+eng",
   ocrPsm: "3",
   preserveInterwordSpaces: true,
@@ -48,10 +46,6 @@ function clampNumber(value, fallback, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 
-function normalizeRatio(value) {
-  return clampNumber(value, DEFAULT_SETTINGS.sharpnessRatio, 0.05, 1);
-}
-
 function normalizePsm(value) {
   const psm = String(value ?? DEFAULT_SETTINGS.ocrPsm);
   return ["3", "4", "6", "11"].includes(psm) ? psm : DEFAULT_SETTINGS.ocrPsm;
@@ -63,28 +57,18 @@ function normalizeOcrScale(value) {
 
 function normalizeSettings(settings) {
   const source = settings || {};
-  let ratio = source.sharpnessRatio;
-  if (ratio == null) {
-    const legacy = Number(source.sharpness);
-    ratio = Number.isFinite(legacy) && legacy > 0 && legacy <= 1
-      ? legacy
-      : DEFAULT_SETTINGS.sharpnessRatio;
-  }
-
   return {
     delay: clampNumber(source.delay, DEFAULT_SETTINGS.delay, 0.2, 10),
     retryDelay: clampNumber(source.retryDelay, DEFAULT_SETTINGS.retryDelay, 0.5, 20),
     attempts: Math.round(clampNumber(source.attempts, DEFAULT_SETTINGS.attempts, 1, 20)),
     renderMaxWait: clampNumber(source.renderMaxWait, DEFAULT_SETTINGS.renderMaxWait, 2, 60),
     stabilityInterval: clampNumber(source.stabilityInterval, DEFAULT_SETTINGS.stabilityInterval, 0.2, 3),
-    stableSamples: Math.round(clampNumber(source.stableSamples, DEFAULT_SETTINGS.stableSamples, 1, 8)),
+    stableSamples: Math.round(clampNumber(source.stableSamples, DEFAULT_SETTINGS.stableSamples, 3, 8)),
     stabilityThresholdPct: clampNumber(source.stabilityThresholdPct, DEFAULT_SETTINGS.stabilityThresholdPct, 0.01, 5),
     pageChangeThresholdPct: clampNumber(source.pageChangeThresholdPct, DEFAULT_SETTINGS.pageChangeThresholdPct, 0.01, 10),
     useDomSignals: source.useDomSignals !== false,
     domIdleMs: Math.round(clampNumber(source.domIdleMs, DEFAULT_SETTINGS.domIdleMs, 100, 5000)),
-    sharpnessRatio: normalizeRatio(ratio),
     checkDuplicates: source.checkDuplicates !== false,
-    checkQuality: source.checkQuality !== false,
     ocrLanguage: ["ita", "eng", "ita+eng"].includes(source.ocrLanguage)
       ? source.ocrLanguage
       : DEFAULT_SETTINGS.ocrLanguage,
@@ -106,9 +90,7 @@ function applySettings(settings) {
   $("pageChangeThresholdPct").value = merged.pageChangeThresholdPct;
   $("useDomSignals").checked = merged.useDomSignals;
   $("domIdleMs").value = merged.domIdleMs;
-  $("sharpnessRatio").value = merged.sharpnessRatio;
   $("checkDuplicates").checked = merged.checkDuplicates;
-  $("checkQuality").checked = merged.checkQuality;
   $("ocrLanguage").value = merged.ocrLanguage;
   $("ocrPsm").value = merged.ocrPsm;
   $("preserveInterwordSpaces").checked = merged.preserveInterwordSpaces;
@@ -128,9 +110,7 @@ function settingsFromForm() {
     pageChangeThresholdPct: $("pageChangeThresholdPct").value,
     useDomSignals: $("useDomSignals").checked,
     domIdleMs: $("domIdleMs").value,
-    sharpnessRatio: $("sharpnessRatio").value,
     checkDuplicates: $("checkDuplicates").checked,
-    checkQuality: $("checkQuality").checked,
     ocrLanguage: $("ocrLanguage").value,
     ocrPsm: $("ocrPsm").value,
     preserveInterwordSpaces: $("preserveInterwordSpaces").checked,
@@ -190,7 +170,6 @@ async function cropCapture(dataUrl, selection) {
 
   const blob = await (await fetch(dataUrl)).blob();
   const bitmap = await createImageBitmap(blob);
-
   const scaleX = bitmap.width / viewport.width;
   const scaleY = bitmap.height / viewport.height;
   const sx = Math.max(0, Math.round(selection.x * scaleX));
@@ -206,90 +185,11 @@ async function cropCapture(dataUrl, selection) {
   const imageData = ctx.getImageData(0, 0, sw, sh);
   const jpegBlob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.90 });
   const jpeg = new Uint8Array(await jpegBlob.arrayBuffer());
-
   return { width: sw, height: sh, imageData, jpeg };
 }
 
 async function captureRegionNow() {
   return cropCapture(await captureVisible(), region);
-}
-
-function quadrantStats(imageData, x0, y0, width, height) {
-  const { data, width: fullWidth } = imageData;
-  let minGray = 255;
-  let maxGray = 0;
-  let gradientSum = 0;
-  let gradientCount = 0;
-
-  const x1 = Math.min(fullWidth, x0 + width);
-  const y1 = Math.min(imageData.height, y0 + height);
-
-  for (let y = y0; y < y1; y += 2) {
-    for (let x = x0; x < x1; x += 2) {
-      const i = (y * fullWidth + x) * 4;
-      const gray = (data[i] * 0.299) + (data[i + 1] * 0.587) + (data[i + 2] * 0.114);
-      minGray = Math.min(minGray, gray);
-      maxGray = Math.max(maxGray, gray);
-
-      if (x + 2 < x1) {
-        const j = (y * fullWidth + x + 2) * 4;
-        const grayRight = (data[j] * 0.299) + (data[j + 1] * 0.587) + (data[j + 2] * 0.114);
-        gradientSum += Math.abs(gray - grayRight);
-        gradientCount++;
-      }
-      if (y + 2 < y1) {
-        const j = ((y + 2) * fullWidth + x) * 4;
-        const grayDown = (data[j] * 0.299) + (data[j + 1] * 0.587) + (data[j + 2] * 0.114);
-        gradientSum += Math.abs(gray - grayDown);
-        gradientCount++;
-      }
-    }
-  }
-
-  return {
-    range: maxGray - minGray,
-    sharpness: gradientCount ? gradientSum / gradientCount : 0
-  };
-}
-
-function validateImage(imageData, baselineSharpness, ratio) {
-  const halfW = Math.max(1, Math.floor(imageData.width / 2));
-  const halfH = Math.max(1, Math.floor(imageData.height / 2));
-  const tl = quadrantStats(imageData, 0, 0, halfW, halfH);
-  const br = quadrantStats(imageData, halfW, halfH, imageData.width - halfW, imageData.height - halfH);
-
-  if (tl.range <= 3 || br.range <= 3) {
-    return { ok: false, type: "monochrome", reason: "uno dei quadranti è quasi monocolore" };
-  }
-
-  const sharpness = Math.min(tl.sharpness, br.sharpness);
-  const normalizedRatio = normalizeRatio(ratio);
-
-  if (baselineSharpness == null) {
-    return {
-      ok: true,
-      sharpness,
-      reason: `baseline nitidezza ${sharpness.toFixed(2)} (ratio ${normalizedRatio.toFixed(2)})`
-    };
-  }
-
-  const threshold = baselineSharpness * normalizedRatio;
-  if (sharpness < threshold) {
-    return {
-      ok: false,
-      type: "blurry",
-      sharpness,
-      threshold,
-      reason: `nitidezza ${sharpness.toFixed(2)} sotto soglia ${threshold.toFixed(2)} (baseline ${baselineSharpness.toFixed(2)} × ratio ${normalizedRatio.toFixed(2)})`
-    };
-  }
-
-  return {
-    ok: true,
-    sharpness,
-    threshold,
-    reason: `nitidezza ${sharpness.toFixed(2)} (soglia ${threshold.toFixed(2)})`
-  };
 }
 
 function imageDifference(a, b) {
@@ -298,14 +198,12 @@ function imageDifference(a, b) {
   const db = b.data;
   let diff = 0;
   let samples = 0;
-
   for (let i = 0; i < da.length; i += 16) {
     diff += Math.abs(da[i] - db[i]);
     diff += Math.abs(da[i + 1] - db[i + 1]);
     diff += Math.abs(da[i + 2] - db[i + 2]);
     samples += 3;
   }
-
   return samples ? diff / (samples * 255) : 1;
 }
 
@@ -314,7 +212,7 @@ function domStateSummary(state) {
   const parts = [];
   if (!state.documentReady) parts.push("documento non completo");
   if (!state.fontsReady) parts.push("font in caricamento");
-  if (state.busyCount) parts.push(`${state.busyCount} loader/busy visibili`);
+  if (state.busyCount) parts.push(`${state.busyCount} loader/busy`);
   if (state.incompleteImageCount) parts.push(`${state.incompleteImageCount} immagini incomplete`);
   if (!state.domIdle) parts.push(`DOM modificato ${state.mutationIdleMs} ms fa`);
   return parts.length ? parts.join(", ") : "DOM pronto";
@@ -340,8 +238,7 @@ async function waitForRenderedPage(previousImageData, settings, pageNumber) {
   const changeThreshold = settings.pageChangeThresholdPct / 100;
   const stableThreshold = settings.stabilityThresholdPct / 100;
   const intervalMs = settings.stabilityInterval * 1000;
-  const deadline = performance.now() + (settings.renderMaxWait * 1000);
-
+  const deadline = performance.now() + settings.renderMaxWait * 1000;
   let changed = !requireChange;
   let previousFrame = null;
   let lastCapture = null;
@@ -349,7 +246,6 @@ async function waitForRenderedPage(previousImageData, settings, pageNumber) {
   let stableComparisons = 0;
   let changeDifference = null;
   let frameDifference = null;
-  let domUnavailableLogged = false;
 
   await sleep(settings.delay * 1000);
 
@@ -359,58 +255,41 @@ async function waitForRenderedPage(previousImageData, settings, pageNumber) {
 
     if (requireChange && !changed) {
       changeDifference = imageDifference(capture.imageData, previousImageData);
-      if (changeDifference >= changeThreshold) {
-        changed = true;
-        previousFrame = null;
-        stableComparisons = 0;
-        log(`Pagina ${pageNumber}: cambio rilevato (${(changeDifference * 100).toFixed(3)}%).`);
-      } else {
+      if (changeDifference < changeThreshold) {
         await sleep(intervalMs);
         continue;
       }
+      changed = true;
+      previousFrame = null;
+      stableComparisons = 0;
+      log(`Pagina ${pageNumber}: cambio rilevato (${(changeDifference * 100).toFixed(3)}%).`);
     }
 
     if (previousFrame) {
       frameDifference = imageDifference(capture.imageData, previousFrame.imageData);
-      if (frameDifference <= stableThreshold) {
-        stableComparisons++;
-      } else {
-        stableComparisons = 0;
-      }
+      stableComparisons = frameDifference <= stableThreshold ? stableComparisons + 1 : 0;
     }
     previousFrame = capture;
 
-    lastDomState = await readDomRenderState(settings);
-    if (settings.useDomSignals && !lastDomState && !domUnavailableLogged) {
-      log(`Pagina ${pageNumber}: segnali DOM non disponibili, uso solo la stabilità visiva.`);
-      domUnavailableLogged = true;
-    }
-
-    const visualReady = stableComparisons >= settings.stableSamples;
-    const domReady = !settings.useDomSignals || !lastDomState || lastDomState.ready;
-
-    if (visualReady && domReady) {
-      log(
-        `Pagina ${pageNumber}: rendering stabile ` +
-        `(${stableComparisons} conferme, Δ ${(Number(frameDifference || 0) * 100).toFixed(3)}%; ` +
-        `${domStateSummary(lastDomState)}).`
-      );
-      return {
-        capture,
-        changed,
-        timedOut: false,
-        stableComparisons,
-        frameDifference,
-        changeDifference,
-        domState: lastDomState
-      };
+    if (stableComparisons >= settings.stableSamples) {
+      lastDomState = await readDomRenderState(settings);
+      if (!settings.useDomSignals || !lastDomState || lastDomState.ready) {
+        return {
+          capture,
+          changed,
+          timedOut: false,
+          stableComparisons,
+          frameDifference,
+          changeDifference,
+          domState: lastDomState
+        };
+      }
     }
 
     await sleep(intervalMs);
   }
 
   if (!lastCapture && !stopRequested) lastCapture = await captureRegionNow();
-
   return {
     capture: lastCapture,
     changed,
@@ -473,7 +352,6 @@ function buildImagePdf(pages) {
   });
 
   objects.set(2, encode(`<< /Type /Pages /Count ${pages.length} /Kids [${kids.join(" ")}] >>`));
-
   const maxObject = 2 + pages.length * 3;
   const header = new Uint8Array([
     0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34, 0x0A,
@@ -498,7 +376,6 @@ function buildImagePdf(pages) {
   }
   xref += `trailer\n<< /Size ${maxObject + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
   chunks.push(encode(xref));
-
   return concatBytes(chunks);
 }
 
@@ -527,7 +404,6 @@ async function downloadPdf(pages, searchable = false) {
     await downloadBytes(pdf, true);
     return true;
   }
-
   await downloadBytes(buildImagePdf(pages), false);
   return false;
 }
@@ -538,7 +414,6 @@ function updateOcrProgress(message) {
   const localProgress = Math.min(1, Math.max(0, Number(message.progress) || 0));
   const completed = message.phase === "page-done" ? index + 1 : index + localProgress;
   const globalProgress = Math.min(1, completed / total);
-
   $("ocrProgress").max = 1;
   $("ocrProgress").value = globalProgress;
   $("ocrProgressText").textContent =
@@ -546,10 +421,7 @@ function updateOcrProgress(message) {
 }
 
 async function runOcr(pages, settings) {
-  if (!globalThis.Ebook2PdfOcr?.recognizePages) {
-    throw new Error("Modulo OCR non disponibile.");
-  }
-
+  if (!globalThis.Ebook2PdfOcr?.recognizePages) throw new Error("Modulo OCR non disponibile.");
   $("ocrProgressBox").classList.remove("hidden");
   $("ocrProgress").value = 0;
   $("ocrProgressText").textContent = "Inizializzazione Tesseract...";
@@ -589,9 +461,7 @@ $("closeSettings").addEventListener("click", async () => {
   showSettings(false);
 });
 
-$("saveSettings").addEventListener("click", async () => {
-  await saveSettings();
-});
+$("saveSettings").addEventListener("click", saveSettings);
 
 $("resetSettings").addEventListener("click", async () => {
   applySettings(DEFAULT_SETTINGS);
@@ -629,160 +499,7 @@ $("selectNext").addEventListener("click", async () => {
 
 $("stop").addEventListener("click", () => {
   stopRequested = true;
-  log("Arresto richiesto: terminerò dopo l'operazione corrente e creerò il PDF con quanto disponibile.");
-});
-
-$("start").addEventListener("click", async () => {
-  if (!region || !nextTarget) {
-    log("Seleziona prima area pagina e comando avanti.");
-    return;
-  }
-
-  const totalPages = Math.max(1, Number($("pages").value) || 1);
-  const settings = settingsFromForm();
-  const enableOcr = $("enableOcr").checked;
-
-  stopRequested = false;
-  $("start").disabled = true;
-  $("stop").disabled = false;
-  $("progress").max = totalPages;
-  $("progress").value = 0;
-  $("progressText").textContent = `0/${totalPages}`;
-  $("log").textContent = "";
-  $("ocrProgressBox").classList.add("hidden");
-  setStep(enableOcr ? "1/3 — Acquisizione" : "1/2 — Acquisizione");
-  log(
-    `Rendering: max ${settings.renderMaxWait.toFixed(1)}s, intervallo ${settings.stabilityInterval.toFixed(1)}s, ` +
-    `${settings.stableSamples} conferme, soglia stabilità ${settings.stabilityThresholdPct.toFixed(2)}%, ` +
-    `DOM ${settings.useDomSignals ? "attivo" : "disattivo"}.`
-  );
-  if (settings.checkQuality) {
-    log(`Nitidezza diagnostica: ratio ${settings.sharpnessRatio.toFixed(2)} (non causa più lo scarto della pagina).`);
-  }
-
-  const pages = [];
-  let previousImageData = null;
-  let baselineSharpness = null;
-  let searchablePdf = false;
-  let navigationInterrupted = false;
-
-  try {
-    for (let pageIndex = 0; pageIndex < totalPages && !stopRequested; pageIndex++) {
-      const pageNumber = pageIndex + 1;
-      let readiness = null;
-
-      if (pageIndex === 0) {
-        readiness = await waitForRenderedPage(null, settings, pageNumber);
-      } else {
-        let changed = false;
-
-        for (let attempt = 1; attempt <= settings.attempts && !stopRequested; attempt++) {
-          const clicked = await sendToTab({ type: "CLICK_NEXT", selector: nextTarget.selector });
-          if (!clicked?.ok) throw new Error(clicked?.error || "Impossibile avanzare alla pagina successiva");
-
-          log(`Pagina ${pageNumber}: cambio pagina, tentativo ${attempt}/${settings.attempts}.`);
-          readiness = await waitForRenderedPage(previousImageData, settings, pageNumber);
-
-          if (!settings.checkDuplicates || readiness.changed) {
-            changed = true;
-            break;
-          }
-
-          log(
-            `Pagina ${pageNumber}: il contenuto non è cambiato abbastanza ` +
-            `(Δ ${(Number(readiness.changeDifference || 0) * 100).toFixed(3)}%). Riprovo il comando avanti.`
-          );
-          if (attempt < settings.attempts) await sleep(settings.retryDelay * 1000);
-        }
-
-        if (!changed && settings.checkDuplicates && !stopRequested) {
-          navigationInterrupted = true;
-          log(`Pagina ${pageNumber}: cambio pagina non rilevato. Interrompo l'acquisizione senza saltare la pagina.`);
-          break;
-        }
-      }
-
-      if (stopRequested) break;
-      if (!readiness?.capture) throw new Error(`Impossibile acquisire la pagina ${pageNumber}`);
-
-      if (readiness.timedOut) {
-        log(
-          `Pagina ${pageNumber}: timeout attesa rendering; acquisisco comunque l'ultimo frame stabile disponibile ` +
-          `(${domStateSummary(readiness.domState)}).`
-        );
-      }
-
-      const capture = readiness.capture;
-
-      if (settings.checkQuality) {
-        const validation = validateImage(capture.imageData, baselineSharpness, settings.sharpnessRatio);
-        if (baselineSharpness == null && validation.sharpness != null) {
-          baselineSharpness = validation.sharpness;
-          log(`Baseline nitidezza impostata a ${baselineSharpness.toFixed(2)}.`);
-        }
-        if (!validation.ok) {
-          log(`Pagina ${pageNumber}: AVVISO qualità — ${validation.reason}. La pagina viene comunque acquisita.`);
-        }
-      }
-
-      pages.push({ width: capture.width, height: capture.height, jpeg: capture.jpeg });
-      previousImageData = capture.imageData;
-      log(`Pagina ${pageNumber}/${totalPages} acquisita.`);
-
-      $("progress").value = pageNumber;
-      $("progressText").textContent = `${pageNumber}/${totalPages} — salvate ${pages.length}`;
-    }
-
-    if (!pages.length) {
-      log("Nessuna pagina acquisita: PDF non creato.");
-      setStep("Operazione terminata senza pagine.");
-      return;
-    }
-
-    if (navigationInterrupted) {
-      log(`Acquisizione interrotta dopo ${pages.length} pagine per evitare duplicati o salti di numerazione.`);
-    }
-
-    if (enableOcr && !stopRequested) {
-      try {
-        searchablePdf = await runOcr(pages, settings);
-      } catch (ocrError) {
-        searchablePdf = false;
-        log(`ERRORE OCR: ${ocrError?.message || ocrError}`);
-        log("Creo comunque il PDF acquisito, senza OCR.");
-      }
-    } else if (enableOcr && stopRequested) {
-      log("OCR saltato perché è stato richiesto l'arresto durante l'acquisizione.");
-    }
-
-    setStep(enableOcr ? "3/3 — Creazione PDF" : "2/2 — Creazione PDF");
-
-    let downloadedAsSearchable = false;
-    if (searchablePdf) {
-      try {
-        log("Compongo il PDF: immagine originale + layer text-only nativo di Tesseract...");
-        downloadedAsSearchable = await downloadPdf(pages, true);
-      } catch (pdfError) {
-        log(`ERRORE composizione PDF OCR: ${pdfError?.message || pdfError}`);
-        log("Fallback: creo il PDF normale con le immagini acquisite.");
-        await downloadPdf(pages, false);
-      }
-    } else {
-      log(`Creo PDF con ${pages.length} pagine...`);
-      await downloadPdf(pages, false);
-    }
-
-    log(downloadedAsSearchable
-      ? "PDF ricercabile con layer Tesseract nativo generato e inviato al download."
-      : "PDF generato e inviato al download.");
-    setStep("Completato.");
-  } catch (error) {
-    log(`ERRORE: ${error?.message || error}`);
-    setStep("Errore.");
-  } finally {
-    $("start").disabled = false;
-    $("stop").disabled = true;
-  }
+  log("Arresto richiesto: termino dopo l'operazione corrente e salvo quanto disponibile.");
 });
 
 loadSettings();
