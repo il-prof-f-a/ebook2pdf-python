@@ -66,6 +66,16 @@
     return /blur\s*\(/i.test(filter);
   }
 
+  function backgroundAlpha(style) {
+    const value = String(style.backgroundColor || "").trim();
+    const rgba = value.match(/^rgba?\(([^)]+)\)$/i);
+    if (!rgba) return value === "transparent" ? 0 : 1;
+    const parts = rgba[1].split(",").map(part => part.trim());
+    if (parts.length < 4) return 1;
+    const alpha = Number(parts[3]);
+    return Number.isFinite(alpha) ? alpha : 1;
+  }
+
   function overlayLike(el, style, region) {
     const rect = el.getBoundingClientRect();
     const regionArea = Math.max(1, region.width * region.height);
@@ -76,9 +86,23 @@
     const semantic = LOADING_RE.test(descriptiveText(el));
     const waitCursor = /^(wait|progress)$/.test(String(style.cursor || ""));
     const filtered = hasVisualFilter(style);
+    const opacity = Number(style.opacity);
+    const alpha = backgroundAlpha(style);
+    const visualVeil =
+      (Number.isFinite(opacity) && opacity > 0.05 && opacity < 0.98) ||
+      (alpha > 0.05 && alpha < 0.98);
 
     if (semantic || waitCursor || filtered) return true;
-    return covered >= 0.25 && ["fixed", "absolute", "sticky"].includes(position) && elevated;
+
+    // Un normale canvas/pannello del viewer può essere absolute e avere z-index alto.
+    // Lo consideriamo overlay soltanto se copre una parte importante dell'area e
+    // possiede anche caratteristiche da velo semitrasparente.
+    return (
+      covered >= 0.25 &&
+      ["fixed", "absolute", "sticky"].includes(position) &&
+      elevated &&
+      visualVeil
+    );
   }
 
   function selectorBusyElements(region) {
