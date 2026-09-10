@@ -1,4 +1,6 @@
 (() => {
+  const INITIAL_SHARPNESS_ATTEMPTS = 5;
+
   let blurWaitLogged = false;
   let sessionBaselineSharpness = null;
 
@@ -38,8 +40,8 @@
   const ratioHelp = ratioInput?.parentElement?.nextElementSibling;
   if (ratioHelp?.classList?.contains("help")) {
     ratioHelp.innerHTML =
-      "<strong>Predefinito: 0,50 (50%).</strong> Dopo l'attesa minima la pagina deve superare " +
-      "questo controllo di nitidezza prima che vengano valutati stabilità visiva e segnali DOM. " +
+      "<strong>Predefinito: 0,50 (50%).</strong> La prima pagina viene campionata 5 volte per stabilire una baseline affidabile. " +
+      "Dopo l'attesa minima ogni pagina deve superare il controllo di nitidezza prima che vengano valutati stabilità visiva e segnali DOM. " +
       "Serve a evitare la cattura di pagine temporaneamente offuscate durante il rendering.";
   }
 
@@ -53,8 +55,7 @@
     const changeThreshold = settings.pageChangeThresholdPct / 100;
     const stableThreshold = settings.stabilityThresholdPct / 100;
     const intervalMs = settings.stabilityInterval * 1000;
-    const deadline = performance.now() + (settings.renderMaxWait * 1000);
-    const effectiveBaseline = baselineSharpness ?? sessionBaselineSharpness;
+    let effectiveBaseline = baselineSharpness ?? sessionBaselineSharpness;
 
     let changed = !requireChange;
     let previousFrame = null;
@@ -69,6 +70,67 @@
 
     blurWaitLogged = false;
     await sleep(settings.delay * 1000);
+
+    // Prima pagina: senza una baseline il primo frame potrebbe essere ancora
+    // offuscato. Campioniamo quindi cinque volte e prendiamo il valore di
+    // nitidezza migliore come riferimento della sessione.
+    if (settings.checkQuality && effectiveBaseline == null) {
+      let bestSharpness = null;
+      let validMeasurements = 0;
+
+      log(
+        `Pagina ${pageNumber}: calibrazione iniziale nitidezza ` +
+        `(${INITIAL_SHARPNESS_ATTEMPTS} tentativi).`
+      );
+
+      for (let attempt = 1; attempt <= INITIAL_SHARPNESS_ATTEMPTS && !stopRequested; attempt++) {
+        const capture = await captureRegionNow();
+        lastCapture = capture;
+        const quality = validateImage(capture.imageData, null, settings.sharpnessRatio);
+        lastQuality = quality;
+
+        if (quality?.sharpness != null && Number.isFinite(Number(quality.sharpness))) {
+          const measured = Number(quality.sharpness);
+          validMeasurements++;
+          if (bestSharpness == null || measured > bestSharpness) {
+            bestSharpness = measured;
+          }
+          log(
+            `Pagina ${pageNumber}: nitidezza iniziale tentativo ${attempt}/${INITIAL_SHARPNESS_ATTEMPTS}: ` +
+            `${measured.toFixed(2)}.`
+          );
+        } else {
+          log(
+            `Pagina ${pageNumber}: nitidezza iniziale tentativo ${attempt}/${INITIAL_SHARPNESS_ATTEMPTS} non valido` +
+            `${quality?.reason ? ` (${quality.reason})` : ""}.`
+          );
+        }
+
+        if (attempt < INITIAL_SHARPNESS_ATTEMPTS && !stopRequested) {
+          await sleep(intervalMs);
+        }
+      }
+
+      if (!stopRequested) {
+        if (bestSharpness == null) {
+          throw new Error(
+            `Pagina ${pageNumber}: impossibile stabilire la baseline di nitidezza dopo ` +
+            `${INITIAL_SHARPNESS_ATTEMPTS} tentativi.`
+          );
+        }
+
+        sessionBaselineSharpness = bestSharpness;
+        effectiveBaseline = bestSharpness;
+        log(
+          `Baseline nitidezza impostata a ${bestSharpness.toFixed(2)} ` +
+          `(migliore di ${validMeasurements}/${INITIAL_SHARPNESS_ATTEMPTS} misurazioni valide).`
+        );
+      }
+    }
+
+    // Il timeout di rendering parte dopo l'attesa minima e, per la prima pagina,
+    // dopo i cinque campionamenti necessari a calibrare la nitidezza.
+    const deadline = performance.now() + (settings.renderMaxWait * 1000);
 
     while (!stopRequested && performance.now() < deadline) {
       const capture = await captureRegionNow();
@@ -152,14 +214,6 @@
 
       const domReady = !settings.useDomSignals || !lastDomState || lastDomState.ready;
       if (domReady) {
-        if (
-          settings.checkQuality &&
-          sessionBaselineSharpness == null &&
-          lastQuality?.sharpness != null
-        ) {
-          sessionBaselineSharpness = lastQuality.sharpness;
-        }
-
         log(
           `Pagina ${pageNumber}: rendering valido ` +
           `(${stableComparisons} conferme, Δ ${(Number(frameDifference || 0) * 100).toFixed(3)}%; ` +
@@ -212,14 +266,6 @@
           settings.sharpnessRatio
         );
       }
-    }
-
-    if (
-      settings.checkQuality &&
-      sessionBaselineSharpness == null &&
-      lastQuality?.sharpness != null
-    ) {
-      sessionBaselineSharpness = lastQuality.sharpness;
     }
 
     return {
