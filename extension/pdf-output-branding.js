@@ -4,7 +4,9 @@
     "PDF scansionato con Ebook2PDF",
     REPOSITORY_URL,
     "Usare solo con contenuti per cui si dispone dei diritti o dell'autorizzazione alla copia.",
-    "Rispettare copyright, licenze e condizioni d'uso."
+    "Chi riceve o utilizza questo PDF deve verificare di avere i diritti necessari.",
+    "Uso, diffusione o condivisione non autorizzati di materiale protetto",
+    "possono violare la normativa sul diritto d'autore e le condizioni d'uso."
   ];
 
   let sessionTitlePromise = null;
