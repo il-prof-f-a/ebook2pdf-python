@@ -18,11 +18,14 @@
 
   // Ordine intenzionale:
   // 1. resilienza della sessione/tab;
-  // 2. gate di nitidezza prima della validazione DOM;
-  // 3. nome file, metadata e disclaimer PDF.
+  // 2. compressione JPEG configurabile;
+  // 3. gate di nitidezza prima della validazione DOM;
+  // 4. nome file, metadata e disclaimer PDF.
   loadScript("capture-resilience.js", () => {
-    loadScript("render-sharpness-gate.js", () => {
-      loadScript("pdf-output-branding.js");
+    loadScript("jpeg-compression.js", () => {
+      loadScript("render-sharpness-gate.js", () => {
+        loadScript("pdf-output-branding.js");
+      });
     });
   });
 })();
