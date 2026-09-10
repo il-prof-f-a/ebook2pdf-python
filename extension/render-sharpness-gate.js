@@ -1,5 +1,47 @@
 (() => {
   let blurWaitLogged = false;
+  let sessionBaselineSharpness = null;
+
+  // Mantiene la baseline interna per tutta una singola acquisizione. In questo
+  // modo il gate di nitidezza funziona anche senza cambiare la firma dei chiamanti.
+  const startButton = document.getElementById("start");
+  startButton?.addEventListener("click", () => {
+    sessionBaselineSharpness = null;
+    blurWaitLogged = false;
+  }, true);
+
+  // Aggiorna il messaggio storico del log: la nitidezza non è più solo
+  // diagnostica, ma viene verificata prima di interrogare il DOM.
+  const originalLog = log;
+  log = function sharpnessAwareLog(message) {
+    let text = String(message ?? "");
+    if (text.startsWith("Nitidezza diagnostica: ratio ")) {
+      text = text.replace(
+        /Nitidezza diagnostica: ratio ([0-9.]+) \(non causa più lo scarto della pagina\)\./,
+        "Controllo nitidezza: ratio $1, verificato prima della validazione DOM."
+      );
+    }
+    originalLog(text);
+  };
+
+  // Allinea anche l'etichetta delle impostazioni al nuovo comportamento.
+  const qualityCheck = document.getElementById("checkQuality");
+  if (qualityCheck?.parentElement) {
+    for (const node of qualityCheck.parentElement.childNodes) {
+      if (node.nodeType === Node.TEXT_NODE && /misura nitidezza/i.test(node.nodeValue || "")) {
+        node.nodeValue = " verifica nitidezza e qualità prima della validazione DOM";
+      }
+    }
+  }
+
+  const ratioInput = document.getElementById("sharpnessRatio");
+  const ratioHelp = ratioInput?.parentElement?.nextElementSibling;
+  if (ratioHelp?.classList?.contains("help")) {
+    ratioHelp.innerHTML =
+      "<strong>Predefinito: 0,50 (50%).</strong> Dopo l'attesa minima la pagina deve superare " +
+      "questo controllo di nitidezza prima che vengano valutati stabilità visiva e segnali DOM. " +
+      "Serve a evitare la cattura di pagine temporaneamente offuscate durante il rendering.";
+  }
 
   waitForRenderedPage = async function waitForRenderedPageWithSharpness(
     previousImageData,
@@ -12,6 +54,7 @@
     const stableThreshold = settings.stabilityThresholdPct / 100;
     const intervalMs = settings.stabilityInterval * 1000;
     const deadline = performance.now() + (settings.renderMaxWait * 1000);
+    const effectiveBaseline = baselineSharpness ?? sessionBaselineSharpness;
 
     let changed = !requireChange;
     let previousFrame = null;
@@ -44,12 +87,13 @@
         }
       }
 
-      // La qualità viene verificata PRIMA dei segnali DOM. Un viewer può infatti
-      // dichiarare il DOM pronto mentre mostra ancora una pagina temporaneamente sfocata.
+      // 1) NITIDEZZA / QUALITÀ
+      // Viene valutata prima sia della stabilità sia del DOM. Il viewer può avere
+      // già concluso le mutazioni DOM mentre il canvas della pagina è ancora blurred.
       if (settings.checkQuality) {
         lastQuality = validateImage(
           capture.imageData,
-          baselineSharpness,
+          effectiveBaseline,
           settings.sharpnessRatio
         );
 
@@ -60,7 +104,7 @@
           if (!blurWaitLogged) {
             log(
               `Pagina ${pageNumber}: immagine non ancora valida (${lastQuality.reason}); ` +
-              `attendo prima di verificare il DOM.`
+              `attendo prima di verificare stabilità e DOM.`
             );
             blurWaitLogged = true;
           }
@@ -80,6 +124,8 @@
 
       lastAcceptableCapture = capture;
 
+      // 2) STABILITÀ VISIVA
+      // Confrontiamo soltanto frame che hanno già superato il gate di qualità.
       if (previousFrame) {
         frameDifference = imageDifference(capture.imageData, previousFrame.imageData);
         if (frameDifference <= stableThreshold) {
@@ -96,8 +142,8 @@
         continue;
       }
 
-      // Il DOM viene interrogato solo dopo che l'immagine ha superato il controllo
-      // di nitidezza/qualità e la stabilità visiva.
+      // 3) DOM
+      // Interroghiamo il DOM solo quando il contenuto visivo è nitido e stabile.
       lastDomState = await readDomRenderState(settings);
       if (settings.useDomSignals && !lastDomState && !domUnavailableLogged) {
         log(`Pagina ${pageNumber}: segnali DOM non disponibili, uso nitidezza e stabilità visiva.`);
@@ -106,6 +152,14 @@
 
       const domReady = !settings.useDomSignals || !lastDomState || lastDomState.ready;
       if (domReady) {
+        if (
+          settings.checkQuality &&
+          sessionBaselineSharpness == null &&
+          lastQuality?.sharpness != null
+        ) {
+          sessionBaselineSharpness = lastQuality.sharpness;
+        }
+
         log(
           `Pagina ${pageNumber}: rendering valido ` +
           `(${stableComparisons} conferme, Δ ${(Number(frameDifference || 0) * 100).toFixed(3)}%; ` +
@@ -140,18 +194,32 @@
       };
     }
 
-    // Se esiste una baseline e nessun frame ha superato il controllo di nitidezza,
-    // non salviamo deliberatamente una pagina sfocata. Il chiamante considera
-    // l'errore recuperabile e passa a OCR/PDF delle pagine già acquisite.
-    if (settings.checkQuality && baselineSharpness != null && !lastAcceptableCapture) {
+    // Con una baseline disponibile non accettiamo una pagina rimasta sfocata fino
+    // al timeout: il flusso resiliente conserva le pagine precedenti e passa a OCR/PDF.
+    if (settings.checkQuality && effectiveBaseline != null && !lastAcceptableCapture) {
       throw new Error(
         `Pagina ${pageNumber}: timeout con immagine ancora non valida` +
         `${lastQuality?.reason ? ` (${lastQuality.reason})` : ""}.`
       );
     }
 
-    if (!lastAcceptableCapture && !stopRequested) {
+    if (!lastAcceptableCapture) {
       lastAcceptableCapture = await captureRegionNow();
+      if (settings.checkQuality) {
+        lastQuality = validateImage(
+          lastAcceptableCapture.imageData,
+          effectiveBaseline,
+          settings.sharpnessRatio
+        );
+      }
+    }
+
+    if (
+      settings.checkQuality &&
+      sessionBaselineSharpness == null &&
+      lastQuality?.sharpness != null
+    ) {
+      sessionBaselineSharpness = lastQuality.sharpness;
     }
 
     return {
