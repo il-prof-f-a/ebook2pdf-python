@@ -11,8 +11,12 @@
 
   let sessionTitlePromise = null;
 
-  async function getActiveTabTitle() {
+  async function getDocumentTabTitle() {
     try {
+      if (globalThis.Ebook2PdfCaptureSession?.getTargetTab) {
+        const tab = await globalThis.Ebook2PdfCaptureSession.getTargetTab();
+        return String(tab?.title || "").trim();
+      }
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       return String(tab?.title || "").trim();
     } catch (error) {
@@ -35,13 +39,12 @@
       name = `ebook2pdf_${stamp}`;
     }
 
-    // Mantiene margine per suffisso OCR ed estensione, evitando nomi file eccessivi.
     if (name.length > 180) name = name.slice(0, 180).trim();
     return name || "ebook2pdf";
   }
 
   async function getSessionTitle() {
-    const title = await (sessionTitlePromise || getActiveTabTitle());
+    const title = await (sessionTitlePromise || getDocumentTabTitle());
     return sanitizeFilename(title);
   }
 
@@ -154,13 +157,10 @@
     return searchable;
   }
 
-  // Il listener in capture registra il titolo prima che l'acquisizione navighi tra le pagine.
   const startButton = document.getElementById("start");
   startButton?.addEventListener("click", () => {
-    sessionTitlePromise = getActiveTabTitle();
+    sessionTitlePromise = getDocumentTabTitle();
   }, true);
 
-  // sidepanel.js dichiara downloadPdf nel global scope; il fallback di acquisizione
-  // lo risolve al momento dell'uso, quindi questa sostituzione vale anche per la modalità Tutte.
   globalThis.downloadPdf = brandedDownloadPdf;
 })();
