@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
@@ -15,7 +14,6 @@ from .capture import (
     capture_region,
     click_next,
     current_mouse_position,
-    diagnostic_quality,
     make_region,
     to_captured_page,
 )
@@ -68,9 +66,7 @@ class Ebook2PdfApp:
         self.stable_samples_var = tk.StringVar(value=str(s.stable_samples))
         self.stability_threshold_var = tk.StringVar(value=str(s.stability_threshold_pct))
         self.page_change_threshold_var = tk.StringVar(value=str(s.page_change_threshold_pct))
-        self.sharpness_ratio_var = tk.StringVar(value=str(s.sharpness_ratio))
         self.check_duplicates_var = tk.BooleanVar(value=s.check_duplicates)
-        self.check_quality_var = tk.BooleanVar(value=s.check_quality)
 
         self.ocr_language_var = tk.StringVar(value=s.ocr_language)
         self.ocr_psm_var = tk.StringVar(value=str(s.ocr_psm))
@@ -330,17 +326,10 @@ class Ebook2PdfApp:
         row = self._setting_entry(capture_tab, row, "Soglia cambio pagina (%)", self.page_change_threshold_var)
         row = self._setting_entry(capture_tab, row, "Attesa tra retry click (s)", self.retry_delay_var)
         row = self._setting_entry(capture_tab, row, "Tentativi massimi cambio pagina", self.max_attempts_var)
-        row = self._setting_entry(capture_tab, row, "Ratio nitidezza diagnostica", self.sharpness_ratio_var)
         ttk.Checkbutton(
             capture_tab,
             text="Verifica che la pagina sia realmente cambiata",
             variable=self.check_duplicates_var,
-        ).grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
-        row += 1
-        ttk.Checkbutton(
-            capture_tab,
-            text="Misura nitidezza a scopo diagnostico",
-            variable=self.check_quality_var,
         ).grid(row=row, column=0, columnspan=2, sticky="w", pady=5)
         capture_tab.columnconfigure(1, weight=1)
 
@@ -436,12 +425,10 @@ class Ebook2PdfApp:
             max_attempts=_int(self.max_attempts_var.get(), 5),
             render_max_wait=_float(self.render_max_wait_var.get(), 12.0),
             stability_interval=_float(self.stability_interval_var.get(), 0.6),
-            stable_samples=_int(self.stable_samples_var.get(), 2),
+            stable_samples=_int(self.stable_samples_var.get(), 3),
             stability_threshold_pct=_float(self.stability_threshold_var.get(), 0.15),
             page_change_threshold_pct=_float(self.page_change_threshold_var.get(), 0.20),
-            sharpness_ratio=_float(self.sharpness_ratio_var.get(), 0.50),
             check_duplicates=self.check_duplicates_var.get(),
-            check_quality=self.check_quality_var.get(),
             ocr_enabled=self.ocr_enabled_var.get(),
             ocr_language=self.ocr_language_var.get(),
             ocr_psm=_int(self.ocr_psm_var.get(), 3),
@@ -506,7 +493,6 @@ class Ebook2PdfApp:
     ):
         pages = []
         previous_image = None
-        baseline_sharpness = None
         page_number = 1
 
         log = lambda message: self.events.put(("log", message))
@@ -520,11 +506,6 @@ class Ebook2PdfApp:
                 f"{settings.stability_interval:.1f}s, {settings.stable_samples} conferme, "
                 f"cambio minimo {settings.page_change_threshold_pct:.2f}%."
             )
-            if settings.check_quality:
-                log(
-                    f"Nitidezza diagnostica: ratio {settings.sharpness_ratio:.2f}; "
-                    "non causa lo scarto della pagina."
-                )
 
             while not self.stop_event.is_set():
                 if not settings.all_pages and page_number > settings.page_count:
@@ -603,21 +584,6 @@ class Ebook2PdfApp:
                     )
 
                 image = result.image
-                if settings.check_quality:
-                    quality = diagnostic_quality(
-                        image,
-                        baseline_sharpness,
-                        settings.sharpness_ratio,
-                    )
-                    if baseline_sharpness is None and quality.sharpness is not None:
-                        baseline_sharpness = quality.sharpness
-                        log(f"Baseline nitidezza impostata a {baseline_sharpness:.2f}.")
-                    if not quality.ok:
-                        log(
-                            f"Pagina {page_number}: AVVISO qualità — {quality.reason}. "
-                            "La pagina viene comunque acquisita."
-                        )
-
                 pages.append(to_captured_page(image))
                 previous_image = image
                 log(
