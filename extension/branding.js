@@ -20,11 +20,14 @@
   // 1. resilienza della sessione/tab;
   // 2. compressione JPEG configurabile;
   // 3. convergenza temporale + blocker di caricamento;
-  // 4. nome file, metadata e disclaimer PDF.
+  // 4. timeout rinnovabile finché loader/overlay restano attivi;
+  // 5. nome file, metadata e disclaimer PDF.
   loadScript("capture-resilience.js", () => {
     loadScript("jpeg-compression.js", () => {
       loadScript("render-readiness-convergence.js", () => {
-        loadScript("pdf-output-branding.js");
+        loadScript("render-loader-wait.js", () => {
+          loadScript("pdf-output-branding.js");
+        });
       });
     });
   });
