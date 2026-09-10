@@ -62,13 +62,17 @@ Solo dopo la convergenza visiva il content script controlla nell'area selezionat
 
 La quiete DOM predefinita è `500 ms`.
 
-## Timeout e miglior frame
+## Timeout e attesa estesa dei loader
 
-Il tempo massimo di attesa è configurabile e vale `12 s` per impostazione predefinita.
+Il tempo massimo ordinario di attesa è configurabile e vale `12 s` per impostazione predefinita.
 
 Durante l'attesa Ebook2PDF conserva il miglior candidato osservato. Se la parte visiva è convergente e non risultano blocker espliciti, il candidato può essere usato come fallback al timeout.
 
-Se invece nessun frame raggiunge una condizione affidabile, la pagina corrente non viene forzata: l'errore è considerato recuperabile, l'acquisizione termina e Ebook2PDF prosegue con OCR e PDF delle pagine già raccolte.
+Dalla versione 0.9.1 il timeout ordinario **non interrompe più l'acquisizione quando la pagina risulta ancora esplicitamente in caricamento**. Se allo scadere del timeout sono ancora presenti loader/busy, immagini incomplete, overlay sospetti, indicatori animati, filtri di offuscamento, cursori di attesa o un placeholder centrale di caricamento, Ebook2PDF rinnova il periodo di attesa e rimane sulla stessa pagina.
+
+In questa situazione non viene eseguito un nuovo click sulla pagina successiva e non si passa a OCR/PDF. L'attesa continua finché il blocker scompare e la pagina raggiunge nuovamente i criteri di convergenza. L'utente può sempre interrompere volontariamente l'attesa con **Ferma**.
+
+Se invece il timeout scade senza alcun segnale esplicito di caricamento e nessun frame raggiunge una condizione affidabile, la pagina corrente non viene forzata: l'errore è considerato recuperabile e Ebook2PDF prosegue con OCR e PDF delle pagine già raccolte.
 
 ## Perché questo approccio
 
