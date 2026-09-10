@@ -12,8 +12,8 @@
   function injectCompressionControl() {
     if (document.getElementById("jpegQuality")) return;
 
-    const qualityCheck = document.getElementById("checkQuality");
-    const anchor = qualityCheck?.closest("label");
+    const duplicateCheck = document.getElementById("checkDuplicates");
+    const anchor = duplicateCheck?.closest("label");
     const settingsBox = anchor?.parentElement;
     if (!settingsBox) return;
 
@@ -63,8 +63,6 @@
 
   injectCompressionControl();
 
-  // Estende le impostazioni esistenti senza cambiare il formato precedente:
-  // installazioni già configurate ricevono automaticamente il default 75%.
   const originalNormalizeSettings = normalizeSettings;
   normalizeSettings = function normalizeSettingsWithJpegQuality(settings) {
     const normalized = originalNormalizeSettings(settings);
@@ -85,8 +83,6 @@
     return settings;
   };
 
-  // Se loadSettings() aveva già iniziato la lettura prima del caricamento di
-  // questo modulo, sincronizza comunque lo slider con il valore persistito.
   chrome.storage.local.get(SETTINGS_KEY).then(stored => {
     const saved = stored?.[SETTINGS_KEY];
     setControlValue(saved?.jpegQuality ?? DEFAULT_JPEG_QUALITY);
@@ -94,9 +90,8 @@
     setControlValue(DEFAULT_JPEG_QUALITY);
   });
 
-  // Sostituisce soltanto la fase di crop/codifica: imageData resta lossless
-  // per cambio pagina, nitidezza e stabilità; la compressione riguarda il JPEG
-  // conservato nelle pagine e quindi il peso del PDF finale.
+  // imageData resta non compresso per il confronto tra frame e la validazione
+  // temporale; la compressione riguarda soltanto il JPEG inserito nel PDF.
   cropCapture = async function cropCaptureWithConfigurableJpeg(dataUrl, selection) {
     const viewport = await sendToTab({ type: "GET_VIEWPORT" });
     if (!viewport?.ok) throw new Error("Impossibile leggere la viewport");
@@ -127,7 +122,6 @@
     return { width: sw, height: sh, imageData, jpeg };
   };
 
-  // Mostra nel log il livello effettivamente usato per la sessione.
   const startButton = document.getElementById("start");
   startButton?.addEventListener("click", () => {
     log(`Compressione PDF: qualità JPEG ${getControlValue()}%.`);
