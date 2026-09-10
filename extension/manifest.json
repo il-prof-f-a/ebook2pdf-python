@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Ebook2PDF",
   "short_name": "Ebook2PDF",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "description": "Cattura pagine visibili di ebook e documenti web autorizzati, crea PDF locali e aggiunge OCR Tesseract opzionale.",
   "author": "Il Prof. (@il-prof-f-a)",
   "homepage_url": "https://github.com/il-prof-f-a/ebook2pdf-python",
