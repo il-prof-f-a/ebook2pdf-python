@@ -25,13 +25,12 @@
 | Pagina successiva | coordinate del mouse | elemento DOM selezionato dall'utente |
 | Numero pagine | numero definito oppure **Tutte** | numero definito oppure **Tutte** |
 | Fine documento automatica | assenza di cambiamento dopo i retry | scomparsa del controllo avanti o assenza di cambiamento |
-| Fine rendering | stabilità visiva | stabilità visiva + segnali DOM |
-| Nitidezza | diagnostica | diagnostica |
+| Fine rendering | stabilità visiva | convergenza temporale + segnali DOM/overlay |
 | OCR | **Tesseract nativo locale** | **Tesseract.js locale** |
 | PDF ricercabile | Tesseract text-only + PyMuPDF | Tesseract text-only + pdf-lib |
 | Configurazione | `~/.ebook2pdf/config.json` | `chrome.storage.local` |
 
-Le due implementazioni condividono la stessa logica operativa. L'estensione può inoltre leggere segnali DOM come `document.readyState`, font, immagini, loader e `aria-busy`; la versione desktop resta invece indipendente dal browser e lavora esclusivamente sui pixel visibili sullo schermo.
+L'estensione può osservare sia l'evoluzione visiva della pagina sia segnali DOM come `document.readyState`, font, immagini, loader, overlay, animazioni, cursori di attesa e filtri CSS. La versione desktop resta invece indipendente dal browser e lavora esclusivamente sui pixel visibili sullo schermo.
 
 ---
 
@@ -94,22 +93,31 @@ Dopo aver aggiornato i file dell'estensione, premi **Ricarica** nella pagina del
 7. Modifica le impostazioni tramite ⚙.
 8. Avvia l'acquisizione.
 
-Con **Tutte**, l'estensione continua finché il comando "pagina successiva" non è più disponibile oppure non produce più un cambiamento della pagina. A quel punto passa automaticamente a OCR e generazione PDF.
+Con **Tutte**, l'estensione continua finché il comando "pagina successiva" non è più disponibile oppure non produce più un cambiamento valido della pagina. A quel punto passa automaticamente a OCR e generazione PDF.
 
 ## Rilevamento del completamento della pagina
 
-L'estensione combina:
+Dalla versione 0.9 Ebook2PDF non confronta la pagina con un riferimento assoluto ricavato da altre pagine. Valuta invece **come la singola pagina converge nel tempo**.
 
-- verifica del cambiamento rispetto alla pagina precedente;
-- stabilità visiva tra screenshot consecutivi;
-- `document.readyState`;
-- stato dei font;
-- immagini non ancora complete;
-- `aria-busy`;
-- loader/spinner visibili;
+Dopo il cambio pagina vengono osservati più frame e confrontati:
+
+- differenza media dei pixel;
+- energia dei bordi;
+- contrasto;
+- distribuzione della luminanza.
+
+Questi indicatori devono rimanere stabili per almeno tre controlli consecutivi. Solo dopo la convergenza visiva vengono verificati:
+
+- `document.readyState` e stato dei font;
+- immagini incomplete;
+- `aria-busy`, loader, spinner, skeleton e progress bar;
+- overlay sovrapposti all'area acquisita;
+- elementi animati riconducibili al caricamento;
+- cursori CSS `wait` / `progress`;
+- filtri CSS o backdrop con offuscamento;
 - quiete delle mutazioni DOM.
 
-La nitidezza resta un controllo diagnostico secondario.
+È presente inoltre un rilevatore prudente delle tipiche schermate temporanee quasi uniformi con indicatore concentrato al centro. In caso di errore durante l'acquisizione, le pagine già raccolte vengono conservate e il programma prosegue con OCR/PDF.
 
 Dettagli: [`extension/RENDER_READINESS.md`](extension/RENDER_READINESS.md).
 
@@ -133,6 +141,8 @@ JPEG originale + layer Tesseract
 ```
 
 Tesseract gestisce direttamente geometria, baseline e spaziatura del layer testuale. Ebook2PDF mantiene il JPEG originale come contenuto visibile del PDF.
+
+La qualità JPEG utilizzata nel PDF è configurabile da **50% a 100%**, con valore predefinito **75%**, per contenere la dimensione dei documenti generati.
 
 Dettagli: [`extension/OCR_TUNING.md`](extension/OCR_TUNING.md).
 
@@ -166,7 +176,7 @@ Le dipendenze principali sono:
 
 - `pyautogui` — click e coordinate mouse;
 - `Pillow` — screenshot e immagini;
-- `numpy` — confronto immagini e diagnostica;
+- `numpy` — confronto immagini;
 - `PyMuPDF` — composizione PDF e layer OCR.
 
 Tkinter è normalmente incluso nelle installazioni Windows di Python. Su alcune distribuzioni Linux può essere necessario installare il pacchetto di sistema `python3-tk`.
@@ -219,8 +229,6 @@ Dopo ogni click Ebook2PDF:
 2. verifica che la pagina sia cambiata rispetto alla precedente;
 3. acquisisce frame successivi;
 4. considera pronta la pagina quando il numero configurato di confronti consecutivi resta sotto la soglia di stabilità.
-
-La nitidezza viene utilizzata soltanto come informazione diagnostica e non causa lo scarto automatico di una pagina già stabilizzata.
 
 In modalità **Tutte**, se i tentativi sul punto "pagina successiva" non producono più un cambiamento visivo sufficiente, Ebook2PDF considera raggiunta la fine del documento e passa automaticamente a OCR/PDF.
 
@@ -277,10 +285,15 @@ ebook2pdf-python/
     ├── manifest.json
     ├── background.js
     ├── content.js
+    ├── content-readiness.js
     ├── sidepanel.html
     ├── sidepanel.css
     ├── sidepanel.js
     ├── acquisition-end-fallback.js
+    ├── capture-resilience.js
+    ├── jpeg-compression.js
+    ├── render-readiness-convergence.js
+    ├── pdf-output-branding.js
     ├── branding.js
     ├── ocr.js
     ├── native-pdf.js
@@ -299,6 +312,7 @@ Entrambe le versioni eseguono acquisizione, OCR e composizione PDF localmente. N
 - l'acquisizione riguarda solo ciò che è visibile e renderizzato;
 - la versione desktop non dispone dei segnali DOM del viewer;
 - l'estensione può essere limitata da iframe cross-origin o viewer particolari;
+- il rilevamento di overlay e placeholder è euristico e può richiedere taratura su viewer particolari;
 - documenti molto lunghi, soprattutto con OCR e upscale elevato, possono richiedere molta RAM;
 - la qualità OCR dipende da risoluzione, contrasto, font e layout della pagina;
 - nessuna delle due modalità può garantire compatibilità con ogni viewer.
