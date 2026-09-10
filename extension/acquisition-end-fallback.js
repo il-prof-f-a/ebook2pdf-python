@@ -2,10 +2,8 @@
   const originalStart = document.getElementById("start");
   if (!originalStart) return;
 
-  // Rimuove il listener di acquisizione registrato in sidepanel.js senza
-  // toccare il resto dell'interfaccia, quindi installa la variante che
-  // considera la scomparsa del comando "pagina successiva" come fine
-  // naturale dell'acquisizione e prosegue con OCR/PDF.
+  // Sostituisce il listener originale con il flusso resiliente: la fine del
+  // documento e gli errori di acquisizione non fanno perdere le pagine già lette.
   const startButton = originalStart.cloneNode(true);
   originalStart.replaceWith(startButton);
 
@@ -26,6 +24,84 @@
   function isMissingNextControl(result) {
     const message = String(result?.error || "");
     return /pagina successiva/i.test(message) && /non trovato/i.test(message);
+  }
+
+  async function finalizeCapturedPages({
+    pages,
+    settings,
+    enableOcr,
+    acquireAll,
+    reachedEndOfDocument,
+    navigationInterrupted,
+    acquisitionError
+  }) {
+    if (!pages.length) {
+      if (acquisitionError) {
+        log(`ERRORE: ${acquisitionError?.message || acquisitionError}`);
+      }
+      log("Nessuna pagina acquisita: PDF non creato.");
+      setStep("Operazione terminata senza pagine.");
+      return;
+    }
+
+    if (acquireAll) {
+      $("progress").max = pages.length;
+      $("progress").value = pages.length;
+      $("progressText").textContent = reachedEndOfDocument
+        ? `${pages.length} pagine acquisite — fine documento`
+        : `${pages.length} pagine acquisite`;
+    }
+
+    if (acquisitionError && !stopRequested) {
+      log(
+        `ERRORE acquisizione recuperabile: ${acquisitionError?.message || acquisitionError}. ` +
+        `Conservo ${pages.length} pagine e proseguo con ${enableOcr ? "OCR e PDF" : "il salvataggio PDF"}.`
+      );
+    } else if (navigationInterrupted && !reachedEndOfDocument) {
+      log(`Acquisizione interrotta dopo ${pages.length} pagine per evitare duplicati o salti di numerazione.`);
+    }
+
+    let searchablePdf = false;
+
+    if (enableOcr && !stopRequested) {
+      try {
+        searchablePdf = await runOcr(pages, settings);
+      } catch (ocrError) {
+        searchablePdf = false;
+        log(`ERRORE OCR recuperabile: ${ocrError?.message || ocrError}`);
+        log("L'OCR non verrà usato, ma salvo comunque tutte le pagine acquisite nel PDF.");
+      }
+    } else if (enableOcr && stopRequested) {
+      log("OCR saltato perché è stato richiesto l'arresto manuale; salvo comunque le pagine già acquisite.");
+    }
+
+    setStep(enableOcr ? "3/3 — Creazione PDF" : "2/2 — Creazione PDF");
+
+    try {
+      let downloadedAsSearchable = false;
+      if (searchablePdf) {
+        try {
+          log("Compongo il PDF: immagine originale + layer text-only nativo di Tesseract...");
+          downloadedAsSearchable = await downloadPdf(pages, true);
+        } catch (pdfError) {
+          log(`ERRORE composizione PDF OCR recuperabile: ${pdfError?.message || pdfError}`);
+          log("Fallback: creo il PDF normale con tutte le immagini acquisite.");
+          await downloadPdf(pages, false);
+        }
+      } else {
+        log(`Creo PDF con ${pages.length} pagine...`);
+        await downloadPdf(pages, false);
+      }
+
+      log(downloadedAsSearchable
+        ? "PDF ricercabile con layer Tesseract nativo generato e inviato al download."
+        : "PDF generato e inviato al download.");
+      setStep(acquisitionError ? "Completato con recupero delle pagine acquisite." : "Completato.");
+    } catch (saveError) {
+      log(`ERRORE salvataggio PDF: ${saveError?.message || saveError}`);
+      log("Le pagine erano state acquisite, ma il browser non ha consentito di completare il download.");
+      setStep("Errore durante il salvataggio PDF.");
+    }
   }
 
   startButton.addEventListener("click", async () => {
@@ -69,9 +145,9 @@
     const pages = [];
     let previousImageData = null;
     let baselineSharpness = null;
-    let searchablePdf = false;
     let navigationInterrupted = false;
     let reachedEndOfDocument = false;
+    let acquisitionError = null;
 
     try {
       for (
@@ -166,61 +242,24 @@
           $("progressText").textContent = `${pageNumber}/${requestedPages} — salvate ${pages.length}`;
         }
       }
-
-      if (!pages.length) {
-        log("Nessuna pagina acquisita: PDF non creato.");
-        setStep("Operazione terminata senza pagine.");
-        return;
-      }
-
-      if (acquireAll) {
-        $("progress").max = pages.length;
-        $("progress").value = pages.length;
-        $("progressText").textContent = reachedEndOfDocument
-          ? `${pages.length} pagine acquisite — fine documento`
-          : `${pages.length} pagine acquisite`;
-      }
-
-      if (navigationInterrupted && !reachedEndOfDocument) {
-        log(`Acquisizione interrotta dopo ${pages.length} pagine per evitare duplicati o salti di numerazione.`);
-      }
-
-      if (enableOcr && !stopRequested) {
-        try {
-          searchablePdf = await runOcr(pages, settings);
-        } catch (ocrError) {
-          searchablePdf = false;
-          log(`ERRORE OCR: ${ocrError?.message || ocrError}`);
-          log("Creo comunque il PDF acquisito, senza OCR.");
-        }
-      } else if (enableOcr && stopRequested) {
-        log("OCR saltato perché è stato richiesto l'arresto durante l'acquisizione.");
-      }
-
-      setStep(enableOcr ? "3/3 — Creazione PDF" : "2/2 — Creazione PDF");
-
-      let downloadedAsSearchable = false;
-      if (searchablePdf) {
-        try {
-          log("Compongo il PDF: immagine originale + layer text-only nativo di Tesseract...");
-          downloadedAsSearchable = await downloadPdf(pages, true);
-        } catch (pdfError) {
-          log(`ERRORE composizione PDF OCR: ${pdfError?.message || pdfError}`);
-          log("Fallback: creo il PDF normale con le immagini acquisite.");
-          await downloadPdf(pages, false);
-        }
-      } else {
-        log(`Creo PDF con ${pages.length} pagine...`);
-        await downloadPdf(pages, false);
-      }
-
-      log(downloadedAsSearchable
-        ? "PDF ricercabile con layer Tesseract nativo generato e inviato al download."
-        : "PDF generato e inviato al download.");
-      setStep("Completato.");
     } catch (error) {
-      log(`ERRORE: ${error?.message || error}`);
-      setStep("Errore.");
+      if (error?.ebook2pdfStop || stopRequested) {
+        log("Acquisizione fermata dall'utente: preparo il PDF con quanto già acquisito.");
+      } else {
+        acquisitionError = error;
+      }
+    }
+
+    try {
+      await finalizeCapturedPages({
+        pages,
+        settings,
+        enableOcr,
+        acquireAll,
+        reachedEndOfDocument,
+        navigationInterrupted,
+        acquisitionError
+      });
     } finally {
       $("start").disabled = false;
       $("stop").disabled = true;
