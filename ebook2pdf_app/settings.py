@@ -20,13 +20,11 @@ class AppSettings:
     max_attempts: int = 5
     render_max_wait: float = 12.0
     stability_interval: float = 0.6
-    stable_samples: int = 2
+    stable_samples: int = 3
     stability_threshold_pct: float = 0.15
     page_change_threshold_pct: float = 0.20
 
-    sharpness_ratio: float = 0.50
     check_duplicates: bool = True
-    check_quality: bool = True
 
     ocr_enabled: bool = False
     ocr_language: str = "ita+eng"
@@ -47,10 +45,9 @@ class AppSettings:
         self.max_attempts = max(1, min(20, int(self.max_attempts or 5)))
         self.render_max_wait = _clamp(self.render_max_wait, 2.0, 120.0, 12.0)
         self.stability_interval = _clamp(self.stability_interval, 0.2, 5.0, 0.6)
-        self.stable_samples = max(1, min(10, int(self.stable_samples or 2)))
+        self.stable_samples = max(3, min(10, int(self.stable_samples or 3)))
         self.stability_threshold_pct = _clamp(self.stability_threshold_pct, 0.01, 10.0, 0.15)
         self.page_change_threshold_pct = _clamp(self.page_change_threshold_pct, 0.01, 20.0, 0.20)
-        self.sharpness_ratio = _clamp(self.sharpness_ratio, 0.05, 1.0, 0.50)
         self.ocr_language = self.ocr_language if self.ocr_language in languages else "ita+eng"
         try:
             self.ocr_psm = int(self.ocr_psm)
