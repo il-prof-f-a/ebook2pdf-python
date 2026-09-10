@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   useDomSignals: true,
   domIdleMs: 500,
   checkDuplicates: true,
+  jpegQuality: 75,
   ocrLanguage: "ita+eng",
   ocrPsm: "3",
   preserveInterwordSpaces: true,
@@ -69,6 +70,7 @@ function normalizeSettings(settings) {
     useDomSignals: source.useDomSignals !== false,
     domIdleMs: Math.round(clampNumber(source.domIdleMs, DEFAULT_SETTINGS.domIdleMs, 100, 5000)),
     checkDuplicates: source.checkDuplicates !== false,
+    jpegQuality: Math.round(clampNumber(source.jpegQuality, DEFAULT_SETTINGS.jpegQuality, 50, 100)),
     ocrLanguage: ["ita", "eng", "ita+eng"].includes(source.ocrLanguage)
       ? source.ocrLanguage
       : DEFAULT_SETTINGS.ocrLanguage,
@@ -91,6 +93,8 @@ function applySettings(settings) {
   $("useDomSignals").checked = merged.useDomSignals;
   $("domIdleMs").value = merged.domIdleMs;
   $("checkDuplicates").checked = merged.checkDuplicates;
+  if ($("jpegQuality")) $("jpegQuality").value = merged.jpegQuality;
+  if ($("jpegQualityValue")) $("jpegQualityValue").textContent = `${merged.jpegQuality}%`;
   $("ocrLanguage").value = merged.ocrLanguage;
   $("ocrPsm").value = merged.ocrPsm;
   $("preserveInterwordSpaces").checked = merged.preserveInterwordSpaces;
@@ -111,6 +115,7 @@ function settingsFromForm() {
     useDomSignals: $("useDomSignals").checked,
     domIdleMs: $("domIdleMs").value,
     checkDuplicates: $("checkDuplicates").checked,
+    jpegQuality: $("jpegQuality")?.value ?? DEFAULT_SETTINGS.jpegQuality,
     ocrLanguage: $("ocrLanguage").value,
     ocrPsm: $("ocrPsm").value,
     preserveInterwordSpaces: $("preserveInterwordSpaces").checked,
