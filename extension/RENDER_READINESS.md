@@ -1,48 +1,75 @@
 # Rilevamento fine rendering pagina
 
-Dalla versione 0.6.0 Ebook2PDF non usa più la nitidezza come criterio principale per decidere se una pagina è pronta.
+Dalla versione 0.9.0 Ebook2PDF determina la disponibilità della pagina osservando **come il contenuto converge nel tempo**, senza confrontarlo con una soglia assoluta ricavata da altre pagine.
 
 ## Strategia
 
-Dopo il comando "pagina successiva" vengono usati due gruppi di segnali.
+Dopo il comando "pagina successiva" la validazione segue questa sequenza:
 
-### 1. Stabilità visiva
+1. verifica del cambio rispetto alla pagina precedente;
+2. osservazione di più frame della nuova pagina;
+3. convergenza temporale degli indicatori visivi;
+4. esclusione di placeholder di caricamento evidenti;
+5. controllo di overlay, loader e segnali DOM;
+6. acquisizione del frame validato.
 
-1. viene verificato che l'area acquisita sia cambiata rispetto alla pagina precedente;
-2. vengono eseguite catture successive della stessa area;
-3. la pagina è considerata visivamente stabile quando più confronti consecutivi rimangono sotto la soglia configurata.
+### 1. Cambio pagina
+
+L'area deve differire dalla pagina precedente almeno della soglia configurata. Il valore predefinito è `0,20%`.
+
+Se il cambiamento non viene rilevato, Ebook2PDF riprova il comando di avanzamento fino al numero massimo di tentativi configurato.
+
+### 2. Convergenza temporale
+
+La pagina non viene giudicata in base al valore assoluto di un singolo indicatore. Per ogni screenshot vengono invece confrontati con il frame precedente:
+
+- differenza media dei pixel;
+- energia dei bordi;
+- contrasto globale;
+- distribuzione della luminanza.
+
+La pagina deve rimanere convergente per almeno **3 controlli consecutivi**. Il numero può essere aumentato nelle impostazioni.
 
 Valori predefiniti:
 
 - soglia cambio pagina: `0,20%`;
-- soglia stabilità: `0,15%`;
-- conferme consecutive: `2`;
-- intervallo configurato: `0,4 s`;
-- le catture vengono comunque serializzate dal background con almeno `500 ms` tra due screenshot.
+- soglia stabilità pixel: `0,15%`;
+- conferme consecutive: `3`;
+- intervallo: `0,4 s`;
+- attesa minima dopo il cambio pagina: `1,5 s`.
 
-### 2. Segnali DOM
+Le catture vengono inoltre serializzate dal background con almeno `500 ms` tra due screenshot.
 
-Quando attivi, il content script controlla nell'area selezionata:
+### 3. Placeholder di caricamento
+
+Viene usato un controllo prudente per intercettare schermate temporanee tipiche dei viewer: grande area grigia quasi uniforme con un piccolo indicatore concentrato al centro.
+
+Il segnale non viene confrontato con pagine precedenti e serve soltanto a evitare che una schermata di attesa stabile venga scambiata per una pagina completata.
+
+### 4. Segnali DOM e overlay
+
+Solo dopo la convergenza visiva il content script controlla nell'area selezionata:
 
 - `document.readyState === "complete"`;
 - stato di `document.fonts`;
 - immagini visibili non ancora complete;
-- elementi visibili con `aria-busy="true"`;
-- elementi visibili che sembrano loader/spinner/loading;
-- tempo trascorso dall'ultima mutazione DOM rilevante nell'area acquisita.
+- `aria-busy`, progress bar, loader, spinner e skeleton;
+- elementi animati riconducibili al caricamento;
+- cursori CSS `wait` o `progress`;
+- overlay posizionati sopra una porzione significativa dell'area;
+- filtri CSS/backdrop con offuscamento;
+- tempo trascorso dall'ultima mutazione DOM rilevante.
 
 La quiete DOM predefinita è `500 ms`.
 
-## Timeout
+## Timeout e miglior frame
 
-Il tempo massimo di attesa rendering è configurabile e vale `12 s` per impostazione predefinita.
+Il tempo massimo di attesa è configurabile e vale `12 s` per impostazione predefinita.
 
-Se la pagina è realmente cambiata ma non soddisfa tutti i segnali entro il timeout, Ebook2PDF acquisisce comunque l'ultimo frame disponibile e scrive un avviso nel log.
+Durante l'attesa Ebook2PDF conserva il miglior candidato osservato. Se la parte visiva è convergente e non risultano blocker espliciti, il candidato può essere usato come fallback al timeout.
 
-Se invece il contenuto non cambia dopo il click, Ebook2PDF ripete il comando "pagina successiva" fino al numero massimo di tentativi. Se non rileva comunque il cambio, interrompe l'acquisizione senza saltare la pagina, così il PDF non perde la corrispondenza con la sequenza originale.
+Se invece nessun frame raggiunge una condizione affidabile, la pagina corrente non viene forzata: l'errore è considerato recuperabile, l'acquisizione termina e Ebook2PDF prosegue con OCR e PDF delle pagine già raccolte.
 
-## Nitidezza
+## Perché questo approccio
 
-Il controllo di nitidezza resta disponibile come diagnostica. La prima pagina acquisita definisce la baseline e il ratio configurabile viene ancora calcolato, ma una pagina già considerata renderizzata non viene più scartata soltanto perché la sua nitidezza è inferiore alla soglia.
-
-Questo evita falsi negativi su pagine correttamente renderizzate ma con grafica, font o contrasto naturalmente differenti.
+Pagine graficamente diverse possono avere valori assoluti molto differenti pur essendo perfettamente renderizzate. Il confronto temporale evita quindi di usare una pagina come riferimento per le altre e cerca invece il momento in cui **la singola pagina smette realmente di evolvere**.
