@@ -118,6 +118,13 @@
           <input id="attempts" type="number" min="1" max="20" value="5">
         </label>
 
+        <label for="jpegQuality">
+          Qualità JPEG / compressione PDF
+          <strong id="jpegQualityValue">75%</strong>
+        </label>
+        <input id="jpegQuality" type="range" min="50" max="100" step="1" value="75" style="width:100%">
+        <p class="help"><strong>Predefinito: 75%.</strong> Riducendo il valore aumenta la compressione e diminuisce il peso del PDF. 100% mantiene la massima qualità; il minimo è limitato al 50% per contenere gli artefatti sui caratteri e l'impatto sull'OCR.</p>
+
         <label class="check"><input id="checkDuplicates" type="checkbox" checked> verifica che la pagina sia realmente cambiata</label>
       </div>
 
