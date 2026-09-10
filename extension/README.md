@@ -22,9 +22,13 @@ Per la documentazione generale del progetto, compresa l'**app desktop Python**, 
 - supporto a pulsanti, link, SVG e componenti custom tramite fallback pointer/mouse;
 - acquisizione di un numero definito di pagine oppure modalità **Tutte**;
 - fine documento automatica quando il comando avanti non è più disponibile;
-- controllo del cambio pagina e stabilità visiva;
-- segnali DOM di fine rendering: ready state, font, immagini, loader, `aria-busy`, mutazioni;
-- nitidezza mantenuta come diagnostica secondaria;
+- controllo del cambio pagina e convergenza temporale tra frame;
+- confronto relativo di pixel, bordi, contrasto e distribuzione luminosa;
+- rilevamento prudente di placeholder centrali su fondo uniforme;
+- segnali DOM avanzati: ready state, font, immagini, loader, overlay, animazioni, cursori di attesa e filtri CSS;
+- pausa automatica se la scheda documento perde il focus;
+- recupero delle pagine già acquisite in caso di errore;
+- qualità JPEG configurabile per ridurre il peso del PDF;
 - impostazioni persistenti in `chrome.storage.local`;
 - OCR locale con Tesseract.js;
 - italiano, inglese o italiano + inglese;
@@ -36,8 +40,6 @@ Per la documentazione generale del progetto, compresa l'**app desktop Python**, 
 - fallback al PDF normale in caso di errore OCR.
 
 ## Installazione
-
-L'estensione è già integrata nel branch `main`, quindi non è necessario effettuare checkout su rami dedicati.
 
 1. Clona o scarica il repository:
 
@@ -67,11 +69,11 @@ Gli asset OCR correnti sono inclusi nel repository. Per rigenerarli consulta [`O
 7. Configura eventualmente le opzioni tramite ⚙️.
 8. Avvia l'acquisizione.
 
-Con **Tutte**, l'estensione continua finché il comando avanti scompare; a quel punto passa automaticamente a OCR e PDF.
+Con **Tutte**, l'estensione continua finché il comando avanti scompare o non produce più un cambiamento valido; a quel punto passa automaticamente a OCR e PDF.
 
 ## Rendering pagina
 
-Dalla v0.6 Ebook2PDF non usa più la nitidezza come criterio principale di fine caricamento. Combina stabilità visiva e segnali DOM. La nitidezza resta disponibile soltanto come informazione diagnostica.
+Dalla v0.9 Ebook2PDF valuta la **convergenza temporale della singola pagina**. Non usa una soglia assoluta ricavata da altre pagine: aspetta che pixel, bordi, contrasto e distribuzione luminosa smettano di evolvere per più controlli consecutivi, quindi verifica overlay, loader e segnali DOM.
 
 Dettagli: [`RENDER_READINESS.md`](RENDER_READINESS.md).
 
@@ -107,22 +109,20 @@ extension/
 ├── manifest.json
 ├── background.js
 ├── content.js
+├── content-readiness.js
 ├── sidepanel.html
 ├── sidepanel.css
 ├── sidepanel.js
 ├── acquisition-end-fallback.js
+├── capture-resilience.js
+├── jpeg-compression.js
+├── render-readiness-convergence.js
+├── pdf-output-branding.js
 ├── branding.js
 ├── ocr.js
 ├── native-pdf.js
 ├── icons/
-│   ├── icon16.png
-│   ├── icon32.png
-│   ├── icon48.png
-│   └── icon128.png
 ├── lib/
-│   ├── tesseract/
-│   ├── tesseract-core/
-│   └── pdf-lib/
 ├── tessdata/
 ├── scripts/
 ├── OCR_ASSETS.md
@@ -136,4 +136,5 @@ extension/
 - documenti molto lunghi possono richiedere molta memoria;
 - l'upscale OCR aumenta tempi e RAM;
 - l'accuratezza OCR dipende dalla qualità grafica della pagina;
+- il rilevamento di placeholder e overlay è euristico e può richiedere ulteriore taratura su viewer particolari;
 - non è ancora presente il salvataggio/ripristino di una sessione interrotta.
