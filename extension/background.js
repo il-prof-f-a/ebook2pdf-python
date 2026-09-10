@@ -10,20 +10,30 @@ function isActiveTabPermissionError(error) {
 }
 
 async function ensureContentScript(tabId) {
+  let baseReady = false;
+  let readinessReady = false;
+
   try {
-    await chrome.tabs.sendMessage(tabId, { type: "PING" });
+    const response = await chrome.tabs.sendMessage(tabId, { type: "PING" });
+    baseReady = response?.ok === true;
+  } catch (_) {}
+
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, { type: "PING_READINESS" });
+    readinessReady = response?.ok === true;
+  } catch (_) {}
+
+  const files = [];
+  if (!baseReady) files.push("content.js");
+  if (!readinessReady) files.push("content-readiness.js");
+  if (!files.length) return true;
+
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files });
     return true;
-  } catch (_) {
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        files: ["content.js"]
-      });
-      return true;
-    } catch (error) {
-      console.warn("Ebook2PDF: impossibile iniettare content.js", error);
-      return false;
-    }
+  } catch (error) {
+    console.warn("Ebook2PDF: impossibile iniettare i content script", error);
+    return false;
   }
 }
 
@@ -77,7 +87,7 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 });
 
-chrome.action.onClicked.addListener(async (tab) => {
+chrome.action.onClicked.addListener(async tab => {
   if (!tab.id) return;
   await ensureContentScript(tab.id);
   await chrome.sidePanel.open({ tabId: tab.id });
