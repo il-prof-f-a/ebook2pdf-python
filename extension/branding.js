@@ -16,9 +16,13 @@
     document.head.appendChild(script);
   }
 
-  // Prima installa il gestore che mantiene legata la sessione alla scheda
-  // del documento; poi applica nome file, metadata e disclaimer PDF.
+  // Ordine intenzionale:
+  // 1. resilienza della sessione/tab;
+  // 2. gate di nitidezza prima della validazione DOM;
+  // 3. nome file, metadata e disclaimer PDF.
   loadScript("capture-resilience.js", () => {
-    loadScript("pdf-output-branding.js");
+    loadScript("render-sharpness-gate.js", () => {
+      loadScript("pdf-output-branding.js");
+    });
   });
 })();
