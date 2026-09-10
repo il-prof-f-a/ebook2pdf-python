@@ -5,7 +5,6 @@ La versione desktop porta nello script Python la stessa filosofia operativa svil
 ## Avvio rapido
 
 ```bash
-git checkout python-desktop-gui
 python -m pip install -r requirements.txt
 python ebook2pdf.py
 ```
@@ -54,8 +53,6 @@ Per l'area vengono registrati prima l'angolo superiore sinistro e poi quello inf
 
 ## Rilevamento fine rendering
 
-La nitidezza non è più usata per decidere se una pagina è pronta.
-
 Dopo il click sulla pagina successiva Ebook2PDF:
 
 1. attende il ritardo minimo configurato;
@@ -63,9 +60,7 @@ Dopo il click sulla pagina successiva Ebook2PDF:
 3. acquisisce frame successivi;
 4. considera pronta la pagina quando la differenza resta sotto la soglia per il numero configurato di conferme consecutive.
 
-La nitidezza resta disponibile soltanto come diagnostica e non causa lo scarto automatico di una pagina già stabilizzata.
-
-A differenza dell'estensione, la versione desktop non può usare `document.readyState`, `aria-busy`, font, immagini DOM o `MutationObserver`, perché lavora sullo schermo e non sul DOM del browser.
+A differenza dell'estensione, la versione desktop non può usare `document.readyState`, `aria-busy`, font, immagini DOM, overlay o `MutationObserver`, perché lavora sullo schermo e non sul DOM del browser.
 
 ## Modalità Tutte
 
@@ -124,8 +119,7 @@ Sono persistenti:
 - ritardi e retry;
 - timeout rendering;
 - intervallo e soglie di stabilità;
-- ratio nitidezza diagnostico;
-- controlli duplicati/qualità;
+- controllo duplicati/cambio pagina;
 - impostazioni OCR;
 - percorso Tesseract;
 - ultima cartella di output.
@@ -140,7 +134,7 @@ ebook2pdf.py                 launcher
 ebook2pdf_app/
 ├── __init__.py
 ├── settings.py              configurazione persistente
-├── capture.py               screenshot, click e diagnostica immagini
+├── capture.py               screenshot, click e confronto immagini
 ├── render.py                cambio pagina e stabilità visiva
 ├── ocr.py                   Tesseract locale / PDF text-only
 ├── pdf.py                   composizione PDF con PyMuPDF
