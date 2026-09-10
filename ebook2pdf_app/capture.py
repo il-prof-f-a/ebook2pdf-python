@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Optional, Tuple
+from typing import Tuple
 
 import numpy as np
 import pyautogui
@@ -39,19 +39,10 @@ class CapturedPage:
     jpeg: bytes
 
 
-@dataclass
-class QualityResult:
-    ok: bool
-    sharpness: Optional[float]
-    threshold: Optional[float]
-    reason: str
-
-
 def capture_region(region: CaptureRegion) -> Image.Image:
     try:
         image = ImageGrab.grab(bbox=region.bbox, all_screens=True)
     except TypeError:
-        # all_screens è specifico di alcune piattaforme/versioni Pillow.
         image = ImageGrab.grab(bbox=region.bbox)
     return image.convert("RGB")
 
@@ -90,67 +81,3 @@ def image_difference(first: Image.Image, second: Image.Image, step: int = 4) -> 
     if a.size == 0:
         return 1.0
     return float(np.abs(a - b).mean() / 255.0)
-
-
-def image_sharpness(image: Image.Image) -> float:
-    gray = np.asarray(image.convert("L"), dtype=np.float32)
-    if gray.size == 0:
-        return 0.0
-    gy, gx = np.gradient(gray)
-    return float(np.sqrt(gx * gx + gy * gy).mean())
-
-
-def diagnostic_quality(
-    image: Image.Image,
-    baseline_sharpness: Optional[float],
-    ratio: float,
-) -> QualityResult:
-    width, height = image.size
-    half_w = max(1, width // 2)
-    half_h = max(1, height // 2)
-    top_left = image.crop((0, 0, half_w, half_h))
-    bottom_right = image.crop((half_w, half_h, width, height))
-
-    ranges = []
-    sharpness_values = []
-    for quadrant in (top_left, bottom_right):
-        gray = np.asarray(quadrant.convert("L"), dtype=np.float32)
-        if gray.size == 0:
-            ranges.append(0.0)
-            sharpness_values.append(0.0)
-            continue
-        ranges.append(float(gray.max() - gray.min()))
-        sharpness_values.append(image_sharpness(quadrant))
-
-    combined = min(sharpness_values)
-    if min(ranges) <= 3.0:
-        return QualityResult(
-            False,
-            combined,
-            None,
-            "uno dei quadranti è quasi monocolore",
-        )
-
-    if baseline_sharpness is None:
-        return QualityResult(
-            True,
-            combined,
-            None,
-            f"baseline nitidezza {combined:.2f}",
-        )
-
-    threshold = baseline_sharpness * max(0.05, min(1.0, float(ratio)))
-    if combined < threshold:
-        return QualityResult(
-            False,
-            combined,
-            threshold,
-            f"nitidezza {combined:.2f} sotto soglia {threshold:.2f}",
-        )
-
-    return QualityResult(
-        True,
-        combined,
-        threshold,
-        f"nitidezza {combined:.2f} (soglia {threshold:.2f})",
-    )
