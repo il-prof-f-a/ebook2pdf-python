@@ -81,7 +81,7 @@
         <label>Tempo massimo di attesa rendering (s)
           <input id="renderMaxWait" type="number" min="2" max="60" step="1" value="12">
         </label>
-        <p class="help">Se entro questo tempo non viene raggiunta una convergenza affidabile, la pagina corrente non viene forzata: il programma salva le pagine già acquisite e prosegue con OCR/PDF.</p>
+        <p class="help">Timeout ordinario di una verifica. Se è ancora presente un loader, overlay o altro indicatore esplicito di caricamento, l'attesa viene rinnovata automaticamente sulla stessa pagina. Solo un timeout senza segnali di caricamento attivi può chiudere l'acquisizione e passare a OCR/PDF.</p>
 
         <label>Intervallo controllo stabilità (s)
           <input id="stabilityInterval" type="number" min="0.2" max="3" step="0.1" value="0.4">
