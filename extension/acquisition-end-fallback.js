@@ -2,8 +2,6 @@
   const originalStart = document.getElementById("start");
   if (!originalStart) return;
 
-  // Sostituisce il listener originale con il flusso resiliente: la fine del
-  // documento e gli errori di acquisizione non fanno perdere le pagine già lette.
   const startButton = originalStart.cloneNode(true);
   originalStart.replaceWith(startButton);
 
@@ -36,9 +34,7 @@
     acquisitionError
   }) {
     if (!pages.length) {
-      if (acquisitionError) {
-        log(`ERRORE: ${acquisitionError?.message || acquisitionError}`);
-      }
+      if (acquisitionError) log(`ERRORE: ${acquisitionError?.message || acquisitionError}`);
       log("Nessuna pagina acquisita: PDF non creato.");
       setStep("Operazione terminata senza pagine.");
       return;
@@ -62,14 +58,12 @@
     }
 
     let searchablePdf = false;
-
     if (enableOcr && !stopRequested) {
       try {
         searchablePdf = await runOcr(pages, settings);
       } catch (ocrError) {
-        searchablePdf = false;
         log(`ERRORE OCR recuperabile: ${ocrError?.message || ocrError}`);
-        log("L'OCR non verrà usato, ma salvo comunque tutte le pagine acquisite nel PDF.");
+        log("Salvo comunque tutte le pagine acquisite nel PDF senza OCR.");
       }
     } else if (enableOcr && stopRequested) {
       log("OCR saltato perché è stato richiesto l'arresto manuale; salvo comunque le pagine già acquisite.");
@@ -94,12 +88,11 @@
       }
 
       log(downloadedAsSearchable
-        ? "PDF ricercabile con layer Tesseract nativo generato e inviato al download."
+        ? "PDF ricercabile generato e inviato al download."
         : "PDF generato e inviato al download.");
       setStep(acquisitionError ? "Completato con recupero delle pagine acquisite." : "Completato.");
     } catch (saveError) {
       log(`ERRORE salvataggio PDF: ${saveError?.message || saveError}`);
-      log("Le pagine erano state acquisite, ma il browser non ha consentito di completare il download.");
       setStep("Errore durante il salvataggio PDF.");
     }
   }
@@ -135,26 +128,18 @@
 
     log(
       `Rendering: max ${settings.renderMaxWait.toFixed(1)}s, intervallo ${settings.stabilityInterval.toFixed(1)}s, ` +
-      `${settings.stableSamples} conferme, soglia stabilità ${settings.stabilityThresholdPct.toFixed(2)}%, ` +
-      `DOM ${settings.useDomSignals ? "attivo" : "disattivo"}.`
+      `${Math.max(3, settings.stableSamples)} conferme di convergenza, soglia pixel ${settings.stabilityThresholdPct.toFixed(2)}%, ` +
+      `DOM/overlay ${settings.useDomSignals ? "attivi" : "disattivati"}.`
     );
-    if (settings.checkQuality) {
-      log(`Nitidezza diagnostica: ratio ${settings.sharpnessRatio.toFixed(2)} (non causa più lo scarto della pagina).`);
-    }
 
     const pages = [];
     let previousImageData = null;
-    let baselineSharpness = null;
     let navigationInterrupted = false;
     let reachedEndOfDocument = false;
     let acquisitionError = null;
 
     try {
-      for (
-        let pageIndex = 0;
-        !stopRequested && (acquireAll || pageIndex < requestedPages);
-        pageIndex++
-      ) {
+      for (let pageIndex = 0; !stopRequested && (acquireAll || pageIndex < requestedPages); pageIndex++) {
         const pageNumber = pageIndex + 1;
         let readiness = null;
 
@@ -165,15 +150,11 @@
 
           for (let attempt = 1; attempt <= settings.attempts && !stopRequested; attempt++) {
             const clicked = await sendToTab({ type: "CLICK_NEXT", selector: nextTarget.selector });
-
             if (!clicked?.ok) {
               if (isMissingNextControl(clicked)) {
                 reachedEndOfDocument = true;
                 navigationInterrupted = true;
-                log(
-                  `Comando “pagina successiva” non più disponibile. ` +
-                  `Fine documento rilevata dopo ${pages.length} pagine; proseguo con ${enableOcr ? "l'OCR" : "la creazione del PDF"}.`
-                );
+                log(`Fine documento rilevata dopo ${pages.length} pagine; proseguo con ${enableOcr ? "OCR" : "PDF"}.`);
                 break;
               }
               throw new Error(clicked?.error || "Impossibile avanzare alla pagina successiva");
@@ -188,20 +169,16 @@
             }
 
             log(
-              `Pagina ${pageNumber}: il contenuto non è cambiato abbastanza ` +
+              `Pagina ${pageNumber}: contenuto non cambiato abbastanza ` +
               `(Δ ${(Number(readiness.changeDifference || 0) * 100).toFixed(3)}%). Riprovo il comando avanti.`
             );
             if (attempt < settings.attempts) await sleep(settings.retryDelay * 1000);
           }
 
           if (reachedEndOfDocument) break;
-
           if (!changed && settings.checkDuplicates && !stopRequested) {
             navigationInterrupted = true;
-            log(
-              `Pagina ${pageNumber}: cambio pagina non rilevato dopo ${settings.attempts} tentativi. ` +
-              `Interrompo l'acquisizione come protezione contro duplicati o viewer bloccato.`
-            );
+            log(`Pagina ${pageNumber}: cambio non rilevato dopo ${settings.attempts} tentativi. Interrompo l'acquisizione.`);
             break;
           }
         }
@@ -211,24 +188,12 @@
 
         if (readiness.timedOut) {
           log(
-            `Pagina ${pageNumber}: timeout attesa rendering; acquisisco comunque l'ultimo frame stabile disponibile ` +
-            `(${domStateSummary(readiness.domState)}).`
+            `Pagina ${pageNumber}: timeout rendering; uso il miglior frame convergente disponibile` +
+            `${readiness.reason ? ` (${readiness.reason})` : ""}.`
           );
         }
 
         const capture = readiness.capture;
-
-        if (settings.checkQuality) {
-          const validation = validateImage(capture.imageData, baselineSharpness, settings.sharpnessRatio);
-          if (baselineSharpness == null && validation.sharpness != null) {
-            baselineSharpness = validation.sharpness;
-            log(`Baseline nitidezza impostata a ${baselineSharpness.toFixed(2)}.`);
-          }
-          if (!validation.ok) {
-            log(`Pagina ${pageNumber}: AVVISO qualità — ${validation.reason}. La pagina viene comunque acquisita.`);
-          }
-        }
-
         pages.push({ width: capture.width, height: capture.height, jpeg: capture.jpeg });
         previousImageData = capture.imageData;
 
