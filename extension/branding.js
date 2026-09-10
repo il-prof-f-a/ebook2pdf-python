@@ -7,14 +7,18 @@
     console.warn("Ebook2PDF: impossibile leggere i metadati del manifest", error);
   }
 
-  // Carica le personalizzazioni del PDF dopo sidepanel.js e il gestore
-  // della modalità Tutte, così può sostituire il generatore di download
-  // senza duplicare la logica di acquisizione.
-  const script = document.createElement("script");
-  script.src = chrome.runtime.getURL("pdf-output-branding.js");
-  script.async = false;
-  script.onerror = () => console.warn(
-    "Ebook2PDF: impossibile caricare le personalizzazioni del PDF"
-  );
-  document.head.appendChild(script);
+  function loadScript(path, onload) {
+    const script = document.createElement("script");
+    script.src = chrome.runtime.getURL(path);
+    script.async = false;
+    script.onload = onload || null;
+    script.onerror = () => console.warn(`Ebook2PDF: impossibile caricare ${path}`);
+    document.head.appendChild(script);
+  }
+
+  // Prima installa il gestore che mantiene legata la sessione alla scheda
+  // del documento; poi applica nome file, metadata e disclaimer PDF.
+  loadScript("capture-resilience.js", () => {
+    loadScript("pdf-output-branding.js");
+  });
 })();
