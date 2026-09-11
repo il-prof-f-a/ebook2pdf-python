@@ -13,6 +13,7 @@
   const retryErrorButton = document.getElementById("retryAcquisitionError");
   const finalizeErrorButton = document.getElementById("finalizeAcquisitionError");
 
+  const MAX_AUTOMATIC_CHANNEL_RETRIES = 2;
   let pendingErrorDecision = null;
   let pausedStepText = "";
 
@@ -51,8 +52,6 @@
   retryErrorButton?.addEventListener("click", () => resolveErrorDecision("retry"));
   finalizeErrorButton?.addEventListener("click", () => resolveErrorDecision("finalize"));
 
-  // Se l'utente usa il pulsante Ferma mentre il banner è aperto, non lasciamo
-  // una Promise sospesa: la scelta equivale a chiudere con quanto già acquisito.
   document.getElementById("stop")?.addEventListener("click", () => {
     if (pendingErrorDecision) resolveErrorDecision("finalize");
   }, true);
@@ -113,8 +112,6 @@
       };
     }
 
-    // Dopo un errore non sappiamo sempre se CLICK_NEXT abbia già avuto effetto.
-    // Prima di ritentarlo confrontiamo il frame corrente con la pagina precedente.
     if (state.needsReconcile) {
       const probe = await probeCurrentPageChange(previousImageData, settings, pageNumber);
       state.pageAdvanced = probe.changed;
@@ -152,7 +149,6 @@
       try {
         readiness = await waitForRenderedPage(previousImageData, settings, pageNumber);
       } catch (error) {
-        // Alla ripresa controlleremo lo schermo prima di decidere se ricliccare.
         state.needsReconcile = true;
         throw error;
       }
@@ -207,7 +203,7 @@
         `Conservo ${pages.length} pagine e procedo con ${enableOcr ? "OCR e PDF" : "il PDF"}.`
       );
     } else if (navigationInterrupted && !reachedEndOfDocument) {
-      log(`Acquisizione interrotta dopo ${pages.length} pagine per evitare duplicati o salti di numerazione.`);
+      log(`Acquisizione interrotta dopo ${pages.length} pagine.`);
     }
 
     let searchablePdf = false;
@@ -299,7 +295,8 @@
       const state = {
         attempt: 1,
         pageAdvanced: pageIndex === 0,
-        needsReconcile: false
+        needsReconcile: false,
+        automaticChannelRetries: 0
       };
 
       while (!stopRequested) {
@@ -319,6 +316,21 @@
             break acquisitionLoop;
           }
 
+          if (
+            error?.ebook2pdfMessageChannelClosed &&
+            state.automaticChannelRetries < MAX_AUTOMATIC_CHANNEL_RETRIES
+          ) {
+            state.automaticChannelRetries += 1;
+            if (pageIndex > 0) state.needsReconcile = true;
+            log(
+              `Pagina ${pageNumber}: canale di comunicazione temporaneamente interrotto. ` +
+              `Attendo e provo a riprendere automaticamente ` +
+              `(${state.automaticChannelRetries}/${MAX_AUTOMATIC_CHANNEL_RETRIES})…`
+            );
+            await sleep(750);
+            continue;
+          }
+
           const decision = await waitForErrorDecision(error, pageNumber, pages.length);
           if (decision === "finalize") {
             acquisitionError = error;
@@ -326,6 +338,7 @@
             break acquisitionLoop;
           }
 
+          state.automaticChannelRetries = 0;
           log(`Pagina ${pageNumber}: nuovo tentativo richiesto dall'utente; riprendo senza perdere le ${pages.length} pagine già acquisite.`);
           if (pageIndex > 0) state.needsReconcile = true;
           continue;
@@ -338,9 +351,23 @@
         }
 
         if (result.navigationInterrupted && !result.readiness) {
-          navigationInterrupted = true;
-          log(`Pagina ${pageNumber}: cambio non rilevato dopo ${settings.attempts} tentativi. Interrompo l'acquisizione.`);
-          break acquisitionLoop;
+          const error = new Error(
+            `Pagina ${pageNumber}: cambio pagina non rilevato dopo ${settings.attempts} tentativi.`
+          );
+          const decision = await waitForErrorDecision(error, pageNumber, pages.length);
+          if (decision === "finalize") {
+            navigationInterrupted = true;
+            acquisitionError = error;
+            closedAfterError = true;
+            break acquisitionLoop;
+          }
+
+          log(`Pagina ${pageNumber}: azzero i tentativi di avanzamento e riprovo su richiesta dell'utente.`);
+          state.attempt = 1;
+          state.pageAdvanced = false;
+          state.needsReconcile = true;
+          state.automaticChannelRetries = 0;
+          continue;
         }
 
         const readiness = result.readiness;
@@ -353,6 +380,7 @@
             closedAfterError = true;
             break acquisitionLoop;
           }
+          state.automaticChannelRetries = 0;
           if (pageIndex > 0) state.needsReconcile = true;
           continue;
         }
