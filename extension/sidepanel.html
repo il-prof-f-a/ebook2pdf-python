@@ -25,6 +25,16 @@
     <section id="mainView">
       <p id="appDescription" class="intro">Cattura le pagine visibili del documento, attende il completamento del rendering e crea un PDF locale con OCR opzionale.</p>
 
+      <section id="acquisitionErrorBanner" class="error-banner hidden" role="alert" aria-live="assertive">
+        <div class="error-banner-title">⚠ Acquisizione in pausa</div>
+        <div id="acquisitionErrorMessage" class="error-banner-message"></div>
+        <div id="acquisitionErrorContext" class="error-banner-context"></div>
+        <div class="error-banner-actions">
+          <button id="retryAcquisitionError" type="button" class="error-retry">↻ Riprova e continua</button>
+          <button id="finalizeAcquisitionError" type="button" class="error-finalize">Chiudi e genera PDF</button>
+        </div>
+      </section>
+
       <label>Pagine da acquisire
         <div class="page-count-row">
           <input id="pages" type="number" min="1" value="10">
@@ -81,7 +91,7 @@
         <label>Tempo massimo di attesa rendering (s)
           <input id="renderMaxWait" type="number" min="2" max="60" step="1" value="12">
         </label>
-        <p class="help">Timeout ordinario di una verifica. Se è ancora presente un loader, overlay o altro indicatore esplicito di caricamento, l'attesa viene rinnovata automaticamente sulla stessa pagina. Solo un timeout senza segnali di caricamento attivi può chiudere l'acquisizione e passare a OCR/PDF.</p>
+        <p class="help">È il timeout ordinario di una verifica. Se sono ancora presenti loader, overlay o altri segnali espliciti di caricamento, l'attesa viene automaticamente estesa senza interrompere la scansione.</p>
 
         <label>Intervallo controllo stabilità (s)
           <input id="stabilityInterval" type="number" min="0.2" max="3" step="0.1" value="0.4">
