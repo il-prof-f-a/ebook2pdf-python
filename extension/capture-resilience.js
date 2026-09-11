@@ -5,10 +5,31 @@
   let pausedStepText = "";
 
   const currentActiveTab = activeTab;
+  const READ_ONLY_MESSAGES = new Set([
+    "PING",
+    "PING_READINESS",
+    "GET_VIEWPORT",
+    "GET_RENDER_STATE",
+    "GET_RENDER_STATE_V2"
+  ]);
+
+  function errorText(value) {
+    return String(value?.message || value || "");
+  }
 
   function isActiveTabPermissionError(value) {
-    const message = String(value?.message || value || "");
+    const message = errorText(value);
     return /activeTab/i.test(message) && /not in effect|not been invoked|permission/i.test(message);
+  }
+
+  function isMessageChannelError(value) {
+    const message = errorText(value);
+    return (
+      /message channel closed/i.test(message) ||
+      /port closed before a response/i.test(message) ||
+      /receiving end does not exist/i.test(message) ||
+      /could not establish connection/i.test(message)
+    );
   }
 
   async function bindCurrentTab() {
@@ -66,6 +87,27 @@
     throw error;
   }
 
+  async function waitForMessageChannel(tabId, maxWaitMs = 10000) {
+    const started = Date.now();
+    while (!stopRequested && Date.now() - started < maxWaitMs) {
+      await waitForTargetTabActive();
+      try {
+        const response = await chrome.tabs.sendMessage(tabId, { type: "PING" });
+        if (response?.ok) return true;
+      } catch (_) {}
+      await sleep(500);
+    }
+    return false;
+  }
+
+  function wrapMessageChannelError(error, message) {
+    const wrapped = new Error(errorText(error) || "Canale di comunicazione con la pagina interrotto.");
+    wrapped.cause = error;
+    wrapped.ebook2pdfMessageChannelClosed = true;
+    wrapped.ebook2pdfActionUncertain = message?.type === "CLICK_NEXT";
+    return wrapped;
+  }
+
   sendToTab = async function resilientSendToTab(message) {
     if (message?.type === "SELECT_REGION") {
       await bindCurrentTab();
@@ -84,18 +126,54 @@
         await waitForTargetTabActive();
         return chrome.tabs.sendMessage(targetTabId, message);
       }
-      throw error;
+
+      if (!isMessageChannelError(error)) throw error;
+
+      // I messaggi di sola lettura sono idempotenti: attendiamo fino a 10 s che
+      // il content script torni disponibile e poi li ripetiamo automaticamente.
+      if (READ_ONLY_MESSAGES.has(message?.type)) {
+        log("Canale con la pagina temporaneamente interrotto: attendo il ripristino automatico…");
+        const recovered = await waitForMessageChannel(tab.id, 10000);
+        if (recovered) {
+          log("Canale con la pagina ripristinato: continuo l'acquisizione.");
+          return chrome.tabs.sendMessage(tab.id, message);
+        }
+      }
+
+      // CLICK_NEXT non viene mai ripetuto alla cieca: il click può essere stato
+      // eseguito anche se la risposta è andata persa. Il livello acquisizione
+      // verificherà prima se la pagina è già cambiata.
+      throw wrapMessageChannelError(error, message);
     }
   };
 
   captureVisible = async function resilientCaptureVisible() {
+    let channelRetryStarted = null;
+
     while (!stopRequested) {
       const tab = await waitForTargetTabActive();
-      const response = await chrome.runtime.sendMessage({
-        type: "CAPTURE_VISIBLE_TAB",
-        tabId: tab.id,
-        windowId: tab.windowId
-      });
+      let response;
+      try {
+        response = await chrome.runtime.sendMessage({
+          type: "CAPTURE_VISIBLE_TAB",
+          tabId: tab.id,
+          windowId: tab.windowId
+        });
+        channelRetryStarted = null;
+      } catch (error) {
+        if (isMessageChannelError(error)) {
+          if (channelRetryStarted == null) {
+            channelRetryStarted = Date.now();
+            log("Canale di cattura temporaneamente interrotto: attendo il ripristino automatico…");
+          }
+          if (Date.now() - channelRetryStarted < 10000) {
+            await sleep(500);
+            continue;
+          }
+          throw wrapMessageChannelError(error, { type: "CAPTURE_VISIBLE_TAB" });
+        }
+        throw error;
+      }
 
       if (response?.ok) {
         announceResume();
@@ -131,6 +209,7 @@
     },
     get targetWindowId() {
       return targetWindowId;
-    }
+    },
+    isMessageChannelError
   };
 })();
