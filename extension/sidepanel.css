@@ -10,6 +10,9 @@
   --blue-dark: #185bc0;
   --blue-soft: #eaf2ff;
   --orange: #ffa62b;
+  --red: #b42318;
+  --red-dark: #912018;
+  --red-soft: #fff1f0;
   --shadow: 0 8px 24px rgba(31, 111, 235, .08);
 }
 
@@ -114,6 +117,62 @@ h3 { margin: 0 0 8px; font-size: 15px; }
   background: rgba(255, 255, 255, .8);
   color: #425466;
   box-shadow: var(--shadow);
+}
+
+.error-banner {
+  position: sticky;
+  top: 78px;
+  z-index: 4;
+  margin: 0 0 14px;
+  padding: 11px;
+  border: 1px solid #f0a19a;
+  border-left: 4px solid var(--red);
+  border-radius: 9px;
+  background: var(--red-soft);
+  box-shadow: 0 8px 24px rgba(180, 35, 24, .16);
+  color: #5f1712;
+}
+
+.error-banner-title {
+  margin-bottom: 5px;
+  color: var(--red-dark);
+  font-weight: 800;
+}
+
+.error-banner-message {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.error-banner-context {
+  margin-top: 5px;
+  color: #7a271a;
+  font-size: 11px;
+}
+
+.error-banner-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+button.error-retry {
+  border-color: var(--red);
+  background: var(--red);
+  color: white;
+}
+
+button.error-retry:hover:not(:disabled) {
+  border-color: var(--red-dark);
+  background: var(--red-dark);
+}
+
+button.error-finalize {
+  border-color: #d09a95;
+  background: white;
+  color: #7a271a;
 }
 
 .muted { color: var(--muted); margin-top: 6px; }
@@ -329,4 +388,5 @@ progress {
   .brand-tagline { display: none; }
   .version-badge { display: none; }
   .app-footer { align-items: flex-start; flex-direction: column; }
+  .error-banner-actions { grid-template-columns: 1fr; }
 }
