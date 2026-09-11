@@ -27,7 +27,9 @@ Per la documentazione generale del progetto, compresa l'**app desktop Python**, 
 - rilevamento prudente di placeholder centrali su fondo uniforme;
 - segnali DOM avanzati: ready state, font, immagini, loader, overlay, animazioni, cursori di attesa e filtri CSS;
 - pausa automatica se la scheda documento perde il focus;
-- recupero delle pagine già acquisite in caso di errore;
+- recupero automatico dei canali di messaggistica Chromium quando possibile;
+- banner interattivo sugli errori di acquisizione con **Riprova e continua** oppure **Chiudi e genera PDF**;
+- protezione contro il doppio avanzamento dopo un errore incerto del comando pagina successiva;
 - qualità JPEG configurabile per ridurre il peso del PDF;
 - impostazioni persistenti in `chrome.storage.local`;
 - OCR locale con Tesseract.js;
@@ -76,6 +78,15 @@ Con **Tutte**, l'estensione continua finché il comando avanti scompare o non pr
 Dalla v0.9 Ebook2PDF valuta la **convergenza temporale della singola pagina**. Non usa una soglia assoluta ricavata da altre pagine: aspetta che pixel, bordi, contrasto e distribuzione luminosa smettano di evolvere per più controlli consecutivi, quindi verifica overlay, loader e segnali DOM.
 
 Dettagli: [`RENDER_READINESS.md`](RENDER_READINESS.md).
+
+## Recupero dagli errori
+
+Gli errori di acquisizione non chiudono più automaticamente una scansione già avviata. L'estensione mette in pausa il flusso e mostra nel side panel un banner rosso con il messaggio ricevuto e due azioni:
+
+- **Riprova e continua**: riprende dalla pagina corrente senza eliminare le pagine già acquisite;
+- **Chiudi e genera PDF**: termina l'acquisizione e procede con OCR/PDF usando quanto già raccolto.
+
+Gli errori transitori del canale di messaggistica Chromium vengono ritentati automaticamente per le operazioni di sola lettura. Se l'interruzione avviene durante il comando **pagina successiva**, Ebook2PDF non ripete subito il click: al retry confronta prima lo schermo con la pagina precedente, così evita un possibile doppio avanzamento se il click era stato eseguito ma la relativa risposta era andata persa.
 
 ## OCR e PDF
 
